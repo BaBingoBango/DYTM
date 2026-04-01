@@ -34,6 +34,7 @@ of the given task will pass, and that an incorrect implementation will fail.
 You will receive:
 1. The original task description
 2. The CNL verification contract (a human-readable list of properties)
+3. The PBT test code (the actual Python tests that will run against the implementation)
 
 You must decide: APPROVE or REJECT.
 
@@ -43,6 +44,7 @@ APPROVE if:
 - The invariants/properties would meaningfully distinguish correct from incorrect implementations
 - The return type is specified
 - The edge case expected values are mathematically correct (see below)
+- The test code correctly implements the specification (see below)
 
 REJECT only if:
 - The contract is fundamentally wrong (contradicts the task)
@@ -50,6 +52,7 @@ REJECT only if:
 - The contract tests something completely different from what the task asks
 - Critical core behavior is missing entirely (not just missing obscure edge cases)
 - One or more edge case expected values are MATHEMATICALLY WRONG
+- The test code has a boundary bug (e.g. uses <= when the task says "less than", which requires <)
 
 IMPORTANT guidelines:
 - Do NOT reject just because some edge cases are missing — no contract is perfect.
@@ -70,6 +73,18 @@ Examples of mistakes to catch:
   - "len('hello') returns 4" — WRONG, should be 5
 If ANY edge case expected value is wrong, REJECT and specify which edge \
 case is incorrect and what the correct value should be.
+
+CRITICAL — VERIFY TEST CODE:
+You will also see the actual Python test code (PBT test implementations).  \
+Check that:
+1. Boundary conditions match the task wording: "closer than X" must use `<`, \
+NOT `<=`.  "at most X" must use `<=`, NOT `<`.
+2. Hypothesis strategies generate VALID inputs for the function (e.g. not \
+`st.text()` for a function that only accepts parentheses).
+3. The test assertions are logically consistent with the CNL specification.
+4. No test property contradicts another (e.g. invariant says "works on any \
+string" but edge case says "raises ValueError for some strings").
+If the test code has bugs, REJECT and specify what's wrong.
 
 Start your response with APPROVE or REJECT, then explain your reasoning briefly.
 """
@@ -165,12 +180,33 @@ def _executive_llm_approval(state: DYTMState, model: BaseChatModel | None) -> di
             + "\n".join(edge_case_lines)
         )
 
+    # Extract test_body code for properties that have it (invariant, membership, output_type)
+    # so the Executive can verify the implementation matches the CNL spec.
+    test_body_lines: list[str] = []
+    for prop in pbt.get("properties", []):
+        test_body = prop.get("test_body")
+        if test_body and prop.get("type") in ("invariant", "membership", "output_type"):
+            ptype = prop.get("type", "?")
+            name = prop.get("name", "?")
+            test_body_lines.append(
+                f"--- {ptype}: {name} ---\n{test_body.strip()}"
+            )
+
+    test_code_section = ""
+    if test_body_lines:
+        test_code_section = (
+            "\n\nPBT TEST CODE (verify these match the specification above — "
+            "check boundary conditions like < vs <=):\n"
+            + "\n\n".join(test_body_lines)
+        )
+
     messages = [
         SystemMessage(content=EXECUTIVE_SYSTEM_PROMPT),
         HumanMessage(content=(
             f"TASK:\n{prompt}\n\n"
             f"VERIFICATION CONTRACT:\n{cnl_text}"
-            f"{edge_case_section}\n\n"
+            f"{edge_case_section}"
+            f"{test_code_section}\n\n"
             f"Should this contract be APPROVED or REJECTED?  "
             f"Start your response with APPROVE or REJECT, then explain."
         )),
