@@ -43,7 +43,7 @@ The PBT payload must contain:
   - `expected_behavior` (edge_case only): what should happen, e.g. "raises ValueError"
 
 Property type guide:
-- **output_type**: checks the return type (e.g. expected="int")
+- **output_type**: checks the return type. The `expected` field must be a SIMPLE type name like "int", "str", "float", "bool", "list", "dict". No JSON syntax, no brackets, no commas.
 - **membership**: checks a containment relationship (e.g. expected="output in input_list")
 - **invariant**: checks a general invariant over random inputs (e.g. expected="len(output) >= 0")
 - **edge_case**: checks specific edge-case inputs with concrete expected behaviour

@@ -11,6 +11,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import copy
+import re
+
 from jinja2 import Environment, FileSystemLoader
 
 from dytm.state import DYTMState
@@ -26,6 +29,19 @@ _env = Environment(
 )
 _cnl_template = _env.get_template("cnl.jinja2")
 
+# JSON artifact pattern — strips stray },{ and similar from LLM output
+_JSON_ARTIFACTS = re.compile(r'[{}\[\]]+[,.]?')
+
+
+def _clean_expected(value: str) -> str:
+    """Strip JSON artifacts from a property's expected field."""
+    cleaned = value.strip()
+    # Remove trailing JSON noise like "},{"  or "}."
+    cleaned = re.sub(r'\s*[}\]]\s*,?\s*[{\[]\s*', '', cleaned)
+    # Remove lone trailing }, {, ], [
+    cleaned = re.sub(r'\s*[}\]{[\[,]+\s*\.?\s*$', '', cleaned)
+    return cleaned.strip().rstrip('.,') + '.' if cleaned else value
+
 
 # ---------------------------------------------------------------------------
 # Node function
@@ -35,7 +51,8 @@ def translator_node(state: DYTMState) -> dict:
     """Render PBT payload → CNL contract string.
 
     Reads ``state["pbt_payload"]`` (a dict) and writes the rendered CNL
-    text to ``state["cnl_text"]``.
+    text to ``state["cnl_text"]``.  Cleans JSON artifacts from LLM output
+    before rendering.
 
     Args:
         state: The current LangGraph state.
@@ -45,9 +62,17 @@ def translator_node(state: DYTMState) -> dict:
     """
     pbt = state["pbt_payload"]
 
+    # Deep-copy and clean properties before rendering
+    clean_props = []
+    for prop in pbt["properties"]:
+        p = dict(prop)
+        if "expected" in p:
+            p["expected"] = _clean_expected(p["expected"])
+        clean_props.append(p)
+
     cnl_text = _cnl_template.render(
         function_name=pbt["function_name"],
-        properties=pbt["properties"],
+        properties=clean_props,
     )
 
     return {"cnl_text": cnl_text}

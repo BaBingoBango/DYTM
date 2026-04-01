@@ -98,7 +98,12 @@ def _get_approval() -> tuple[bool, str]:
 
 
 def _run_task(operator_fn, prompt: str, max_retries: int = 3) -> dict:
-    """Run one task through the DYTM loop with interactive approval."""
+    """Run one task through the DYTM loop with interactive approval.
+
+    The contract (PBTs) is approved ONCE.  On test failure, only the code
+    is regenerated against the same approved PBTs.  The user only re-approves
+    if they explicitly reject the contract.
+    """
     state = {
         "prompt": prompt,
         "mode": "free",
@@ -106,30 +111,32 @@ def _run_task(operator_fn, prompt: str, max_retries: int = 3) -> dict:
         "max_retries": max_retries,
     }
 
-    for attempt in range(max_retries + 1):
-        # Step 1: Operator generates code + PBTs
+    # --- Phase A: Generate & approve the contract ---
+    contract_approved = False
+    while not contract_approved:
         with console.status("[bold cyan]Operator is generating code and verification properties..."):
             op_result = operator_fn(state)
         state.update(op_result)
 
-        # Step 2: Translator renders CNL
         tr_result = translator_node(state)
         state.update(tr_result)
 
-        # Step 3: Show CNL and get approval
         _show_cnl(state["cnl_text"])
         approved, feedback = _get_approval()
 
-        if not approved:
+        if approved:
+            contract_approved = True
+            state["approved"] = True
+        else:
             state["approved"] = False
             state["error_trace"] = feedback
             state["retry_count"] = state.get("retry_count", 0) + 1
             console.print("[yellow]Regenerating with your feedback...[/yellow]")
-            continue
 
-        state["approved"] = True
+    # --- Phase B: Execute & retry (code only, same PBTs) ---
+    approved_pbt = state["pbt_payload"]  # freeze the approved contract
 
-        # Step 4: Doer executes tests
+    for attempt in range(max_retries + 1):
         with console.status("[bold cyan]Running Hypothesis PBTs..."):
             doer_result = doer_node(state)
         state.update(doer_result)
@@ -137,12 +144,20 @@ def _run_task(operator_fn, prompt: str, max_retries: int = 3) -> dict:
         if state.get("test_result") == "pass":
             return state
 
-        # Show failure and retry
+        # Show failure
         console.print(f"[red]Attempt {attempt + 1} FAILED[/red]")
-        if state.get("counterexample"):
-            console.print(f"[dim]Counterexample: {state['counterexample']}[/dim]")
+        if state.get("error_trace"):
+            console.print(f"[dim]{state['error_trace'][:500]}[/dim]")
+
         if attempt < max_retries:
-            console.print("[yellow]Retrying with counterexample feedback...[/yellow]")
+            console.print("[yellow]Retrying — regenerating code against approved contract...[/yellow]")
+            with console.status("[bold cyan]Operator is fixing the code..."):
+                op_result = operator_fn(state)
+            state.update(op_result)
+            # Keep the approved PBTs, don't let the Operator change them
+            state["pbt_payload"] = approved_pbt
+
+    return state
 
     return state
 
