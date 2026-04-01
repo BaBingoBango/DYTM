@@ -60,7 +60,7 @@ IMPORTANT GUIDELINES:
   Do NOT invent error-handling requirements the task doesn't mention.
 - For edge cases with concrete return values, use: expected_behavior="returns <value>"
 - Think about: empty inputs, zero, negative numbers, single elements, large inputs, typical cases.
-- For test_body: use `from hypothesis import given, settings` and `hypothesis.strategies as st`. \
+- For test_body: use `from hypothesis import given, settings, assume` and `hypothesis.strategies as st`. \
 The test file already imports these.
 - For test_body: the function under test is available by name in the test file scope.
 - For test_body: use Python 3.10+ type hints (lowercase `list`, `dict`, etc.) — NOT `List`, `Dict` from typing.
@@ -75,6 +75,13 @@ NOT `st.lists(st.integers())`.
 specifically requires handling NaN/Inf.
   Using too-broad strategies (like `st.text()` for a parentheses parser) causes false failures \
 when Hypothesis generates inputs outside the function's domain.
+- CRITICAL — PRECONDITIONED TESTS: When a test needs inputs satisfying a precondition \
+(e.g. "when no two elements are close, the result is False"), use `assume()` to filter, \
+NOT a bare `assert` on the precondition.  Example:
+  WRONG:  assert all(abs(a-b) > threshold for ...); result = f(x); assert result is False
+  RIGHT:  assume(all(abs(a-b) > threshold for ...)); result = f(x); assert result is False
+  `assume()` tells Hypothesis to skip examples that don't meet the precondition.  A bare \
+`assert` crashes the test instead of skipping.  The test file already imports `assume`.
 - CRITICAL — BOUNDARY PRECISION: In test_body, be precise about strict vs inclusive comparisons. \
 Match the EXACT wording of the task:
   - "closer than X" / "less than X" → use `<` (strict), NOT `<=`

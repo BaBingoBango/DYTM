@@ -62,7 +62,7 @@ def _compile_test_file(code: str, pbt: dict) -> str:
         "from collections import *\n"
         "import math\n"
         "import re\n"
-        "from hypothesis import given, settings, HealthCheck\n"
+        "from hypothesis import given, settings, assume, HealthCheck\n"
         "from hypothesis import strategies as st\n"
         "\n"
         "# ---- Function under test ----\n"
