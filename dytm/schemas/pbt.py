@@ -89,11 +89,42 @@ class PBTPayload(BaseModel):
     )
 
 
-class OperatorOutput(BaseModel):
-    """Top-level structured output expected from the Operator LLM.
+class SpecOutput(BaseModel):
+    """Structured output from the Spec node — PBT properties only, NO code.
 
-    This is the target schema for
-    ``model.with_structured_output(OperatorOutput)``.
+    The Spec node generates a verification contract (what the code must do)
+    *before* any code is written.  This enforces separation of concerns:
+    the specification is approved independently of the implementation.
+
+    Attributes:
+        pbt: The structured PBT payload describing the verification
+             properties.
+    """
+
+    pbt: PBTPayload = Field(
+        ...,
+        description="Structured PBT payload with verification properties",
+    )
+
+
+class CoderOutput(BaseModel):
+    """Structured output from the Coder node — code only, given approved PBTs.
+
+    The Coder node receives the approved PBT contract and generates code
+    on a fresh context (no memory of the spec generation).
+
+    Attributes:
+        code: The complete Python source code of the generated function.
+    """
+
+    code: str = Field(
+        ...,
+        description="Complete Python source code of the generated function",
+    )
+
+
+class OperatorOutput(BaseModel):
+    """Legacy: combined code + PBT output (kept for backward compat).
 
     Attributes:
         code: The complete Python source code of the generated function.

@@ -3,6 +3,9 @@
 A Rich-powered REPL where the user plays the Executive role, experiencing
 the full DYTM verification loop firsthand.
 
+New v2 pipeline:
+    Spec (PBTs only) → Translator (CNL) → Human Approval → Coder (fresh) → Doer (tests)
+
 Usage:
     python -m dytm.free
 """
@@ -20,8 +23,9 @@ from rich.panel import Panel
 from rich.syntax import Syntax
 from rich.table import Table
 
+from dytm.nodes.coder import make_coder_node
 from dytm.nodes.doer import doer_node
-from dytm.nodes.operator import make_operator_node
+from dytm.nodes.spec import make_spec_node
 from dytm.nodes.translator import translator_node
 
 console = Console()
@@ -31,6 +35,7 @@ def _show_banner() -> None:
     console.print(Panel(
         "[bold cyan]DYTM - Do You Trust Me[/bold cyan]\n"
         "[dim]A deterministic verification layer for LLM agents[/dim]\n\n"
+        "[dim]v2 pipeline: Spec → CNL → You (approve/reject) → Coder → Tests[/dim]\n\n"
         "Type a coding task. Type [bold]quit[/bold] to exit.",
         title="Free Mode",
         border_style="cyan",
@@ -97,26 +102,26 @@ def _get_approval() -> tuple[bool, str]:
             console.print("[dim]Please enter Y, N, or Q.[/dim]")
 
 
-def _run_task(operator_fn, prompt: str, max_retries: int = 3) -> dict:
-    """Run one task through the DYTM loop with interactive approval.
+def _run_task(spec_fn, coder_fn, prompt: str, max_retries: int = 3) -> dict:
+    """Run one task through the DYTM v2 loop with interactive approval.
 
-    The contract (PBTs) is approved ONCE.  On test failure, only the code
-    is regenerated against the same approved PBTs.  The user only re-approves
-    if they explicitly reject the contract.
+    Phase A: Spec generates PBTs only → Translator renders CNL → Human approves
+    Phase B: Coder generates code (fresh context) → Doer runs tests → retry if needed
     """
     state = {
         "prompt": prompt,
         "mode": "free",
         "retry_count": 0,
         "max_retries": max_retries,
+        "spec_retry_count": 0,
     }
 
-    # --- Phase A: Generate & approve the contract ---
+    # --- Phase A: Generate & approve the contract (no code yet!) ---
     contract_approved = False
     while not contract_approved:
-        with console.status("[bold cyan]Operator is generating code and verification properties..."):
-            op_result = operator_fn(state)
-        state.update(op_result)
+        with console.status("[bold cyan]Spec is generating verification properties..."):
+            spec_result = spec_fn(state)
+        state.update(spec_result)
 
         tr_result = translator_node(state)
         state.update(tr_result)
@@ -129,14 +134,23 @@ def _run_task(operator_fn, prompt: str, max_retries: int = 3) -> dict:
             state["approved"] = True
         else:
             state["approved"] = False
-            state["error_trace"] = feedback
-            state["retry_count"] = state.get("retry_count", 0) + 1
-            console.print("[yellow]Regenerating with your feedback...[/yellow]")
+            state["approval_feedback"] = feedback
+            state["spec_retry_count"] = state.get("spec_retry_count", 0) + 1
+            console.print("[yellow]Regenerating contract with your feedback...[/yellow]")
 
-    # --- Phase B: Execute & retry (code only, same PBTs) ---
+    # --- Phase B: Coder generates code (FRESH context) → Doer tests ---
     approved_pbt = state["pbt_payload"]  # freeze the approved contract
 
+    console.print()
+    console.print("[bold cyan]Contract approved! Now generating code on a fresh context...[/bold cyan]")
+
     for attempt in range(max_retries + 1):
+        with console.status("[bold cyan]Coder is writing code against the approved contract..."):
+            coder_result = coder_fn(state)
+        state.update(coder_result)
+        # Ensure approved PBTs stay locked
+        state["pbt_payload"] = approved_pbt
+
         with console.status("[bold cyan]Running Hypothesis PBTs..."):
             doer_result = doer_node(state)
         state.update(doer_result)
@@ -151,13 +165,6 @@ def _run_task(operator_fn, prompt: str, max_retries: int = 3) -> dict:
 
         if attempt < max_retries:
             console.print("[yellow]Retrying — regenerating code against approved contract...[/yellow]")
-            with console.status("[bold cyan]Operator is fixing the code..."):
-                op_result = operator_fn(state)
-            state.update(op_result)
-            # Keep the approved PBTs, don't let the Operator change them
-            state["pbt_payload"] = approved_pbt
-
-    return state
 
     return state
 
@@ -174,7 +181,8 @@ def main() -> None:
     from langchain_openai import ChatOpenAI
 
     model = ChatOpenAI(model="gpt-4o-mini", temperature=0)
-    operator_fn = make_operator_node(model)
+    spec_fn = make_spec_node(model)
+    coder_fn = make_coder_node(model)
 
     _show_banner()
 
@@ -187,7 +195,7 @@ def main() -> None:
                 break
 
             start = time.time()
-            final_state = _run_task(operator_fn, prompt)
+            final_state = _run_task(spec_fn, coder_fn, prompt)
             elapsed = time.time() - start
 
             _show_result(final_state, elapsed)

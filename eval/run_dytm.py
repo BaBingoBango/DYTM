@@ -4,8 +4,11 @@ For each problem, runs the DYTM LangGraph pipeline (Operator -> Translator
 -> Approval (auto) -> Doer), then validates the final code against the
 benchmark's canonical test suite.
 
+Now with **real-time observability**: streams graph execution node-by-node
+so you can see exactly what the system is doing at each step.
+
 Usage:
-    python -m eval.run_dytm [--limit N] [--model MODEL]
+    python -m eval.run_dytm [--limit N] [--model MODEL] [--verbose]
 """
 
 from __future__ import annotations
@@ -26,19 +29,50 @@ _root = Path(__file__).resolve().parent.parent
 load_dotenv(_root / ".env.local")
 load_dotenv(_root / ".env")
 
+from rich.console import Console
+from rich.panel import Panel
+from rich.syntax import Syntax
+from rich.table import Table
 from langchain_openai import ChatOpenAI
 
 from dytm.graph import build_graph
 from eval.loader import build_canonical_test_code, load_humaneval
 
+console = Console()
 RESULTS_DIR = Path(__file__).resolve().parent / "results"
 RESULTS_DIR.mkdir(exist_ok=True)
 
+# ---------------------------------------------------------------------------
+# Colour / icon helpers
+# ---------------------------------------------------------------------------
 
-def _run_canonical_tests(code: str, problem: dict, timeout: int = 30) -> bool:
-    """Run the benchmark's canonical tests against generated code."""
+_NODE_STYLE = {
+    "spec":       ("📋", "bold cyan"),
+    "translator": ("📝", "bold yellow"),
+    "approval":   ("👔", "bold green"),
+    "coder":      ("💻", "bold blue"),
+    "doer":       ("🧪", "bold magenta"),
+}
+
+
+def _node_tag(name: str) -> str:
+    icon, style = _NODE_STYLE.get(name, ("▸", "dim"))
+    return f"[{style}]{icon} {name.upper()}[/{style}]"
+
+
+# ---------------------------------------------------------------------------
+# Canonical test runner (unchanged)
+# ---------------------------------------------------------------------------
+
+def _run_canonical_tests(code: str, problem: dict, timeout: int = 30) -> tuple[bool, str]:
+    """Run the benchmark's canonical tests against generated code.
+
+    Returns (passed, error_detail).
+    """
     test_harness = build_canonical_test_code(problem)
-    full_code = code + "\n\n" + test_harness
+    # Add typing imports so code using List[float] etc. works
+    preamble = "from typing import *\nfrom collections import *\nimport math\n\n"
+    full_code = preamble + code + "\n\n" + test_harness
 
     with tempfile.TemporaryDirectory() as tmpdir:
         test_file = Path(tmpdir) / "test_canonical.py"
@@ -52,21 +86,229 @@ def _run_canonical_tests(code: str, problem: dict, timeout: int = 30) -> bool:
                 text=True,
                 cwd=tmpdir,
             )
-            return result.returncode == 0
-        except (subprocess.TimeoutExpired, Exception):
-            return False
+            if result.returncode == 0:
+                return True, ""
+            detail = (result.stdout or "") + "\n" + (result.stderr or "")
+            return False, detail.strip()[-1000:]
+        except subprocess.TimeoutExpired:
+            return False, "Canonical tests timed out"
+        except Exception as exc:
+            return False, str(exc)[:500]
 
+
+# ---------------------------------------------------------------------------
+# Verbose helpers — show what each node produced
+# ---------------------------------------------------------------------------
+
+def _show_spec_output(state: dict, elapsed_ms: int, verbose: bool) -> None:
+    """Log Spec node results."""
+    pbt = state.get("pbt_payload", {})
+    func_name = pbt.get("function_name", "?")
+    n_props = len(pbt.get("properties", []))
+    prop_types = [p.get("type", "?") for p in pbt.get("properties", [])]
+    type_summary = ", ".join(f"{t}×{prop_types.count(t)}" for t in dict.fromkeys(prop_types))
+
+    console.print(
+        f"  {_node_tag('spec')} → fn=[bold]{func_name}[/bold]  "
+        f"props={n_props} ({type_summary})  "
+        f"[dim]{elapsed_ms}ms[/dim]"
+    )
+
+    if verbose:
+        # Show property names
+        for p in pbt.get("properties", []):
+            ptype = p.get("type", "?")
+            name = p.get("name", "?")
+            expected = p.get("expected", "")[:60]
+            console.print(f"    [dim]• {ptype}: {name} — {expected}[/dim]")
+
+
+def _show_coder_output(state: dict, elapsed_ms: int, verbose: bool) -> None:
+    """Log Coder node results."""
+    code = state.get("code", "")
+    console.print(
+        f"  {_node_tag('coder')} → code={len(code.splitlines())}L  "
+        f"[dim]{elapsed_ms}ms[/dim]"
+    )
+
+    if verbose:
+        preview = "\n".join(code.splitlines()[:8])
+        if len(code.splitlines()) > 8:
+            preview += "\n    # ... (truncated)"
+        console.print(Panel(
+            Syntax(preview, "python", theme="monokai"),
+            title="[dim]Generated Code Preview[/dim]",
+            border_style="dim blue",
+            expand=False,
+            padding=(0, 1),
+        ))
+
+
+def _show_operator_output(state: dict, elapsed_ms: int, verbose: bool) -> None:
+    """Log Operator node results (legacy)."""
+    code = state.get("code", "")
+    pbt = state.get("pbt_payload", {})
+    func_name = pbt.get("function_name", "?")
+    n_props = len(pbt.get("properties", []))
+    prop_types = [p.get("type", "?") for p in pbt.get("properties", [])]
+    type_summary = ", ".join(f"{t}×{prop_types.count(t)}" for t in dict.fromkeys(prop_types))
+
+    console.print(
+        f"  {_node_tag('operator')} → fn=[bold]{func_name}[/bold]  "
+        f"props={n_props} ({type_summary})  "
+        f"code={len(code.splitlines())}L  "
+        f"[dim]{elapsed_ms}ms[/dim]"
+    )
+
+    if verbose:
+        # Show first few lines of code
+        preview = "\n".join(code.splitlines()[:8])
+        if len(code.splitlines()) > 8:
+            preview += "\n    # ... (truncated)"
+        console.print(Panel(
+            Syntax(preview, "python", theme="monokai"),
+            title="[dim]Generated Code Preview[/dim]",
+            border_style="dim cyan",
+            expand=False,
+            padding=(0, 1),
+        ))
+
+
+def _show_translator_output(state: dict, elapsed_ms: int, verbose: bool) -> None:
+    """Log Translator node results."""
+    cnl = state.get("cnl_text", "")
+    n_lines = len(cnl.strip().splitlines())
+    console.print(
+        f"  {_node_tag('translator')} → CNL contract rendered ({n_lines} lines)  "
+        f"[dim]{elapsed_ms}ms[/dim]"
+    )
+
+    if verbose:
+        console.print(Panel(
+            cnl.strip()[:600],
+            title="[dim]CNL Contract[/dim]",
+            border_style="dim yellow",
+            expand=False,
+            padding=(0, 1),
+        ))
+
+
+def _show_approval_output(state: dict, elapsed_ms: int, verbose: bool) -> None:
+    """Log Approval node results."""
+    approved = state.get("approved", False)
+    feedback = state.get("approval_feedback", "")
+
+    if approved:
+        tag = "[green]APPROVED[/green]"
+    else:
+        tag = "[red]REJECTED[/red]"
+
+    spec_retry = state.get("spec_retry_count", 0)
+    retry_tag = f"  spec_retry={spec_retry}" if spec_retry > 0 else ""
+
+    console.print(
+        f"  {_node_tag('approval')} → {tag}{retry_tag}  [dim]{elapsed_ms}ms[/dim]"
+    )
+
+    if verbose and feedback:
+        # Show first few lines of Executive reasoning
+        short_feedback = feedback[:400]
+        if len(feedback) > 400:
+            short_feedback += "..."
+        console.print(Panel(
+            short_feedback,
+            title="[dim]Executive Reasoning[/dim]",
+            border_style="dim green" if approved else "dim red",
+            expand=False,
+            padding=(0, 1),
+        ))
+
+
+def _show_doer_output(state: dict, elapsed_ms: int, verbose: bool) -> None:
+    """Log Doer node results."""
+    test_result = state.get("test_result", "?")
+    security = state.get("security_passed", False)
+    retry = state.get("retry_count", 0)
+
+    if test_result == "pass":
+        result_tag = "[bold green]PASS ✓[/bold green]"
+    elif test_result == "fail":
+        result_tag = "[bold red]FAIL ✗[/bold red]"
+    else:
+        result_tag = f"[bold yellow]{test_result}[/bold yellow]"
+
+    sec_tag = "[green]✓[/green]" if security else "[red]✗[/red]"
+    console.print(
+        f"  {_node_tag('doer')} → {result_tag}  "
+        f"security={sec_tag}  retry_count={retry}  "
+        f"[dim]{elapsed_ms}ms[/dim]"
+    )
+
+    if verbose and state.get("error_trace"):
+        trace = state["error_trace"][:800]
+        console.print(Panel(
+            trace,
+            title="[dim]Error Trace[/dim]",
+            border_style="dim red",
+            expand=False,
+            padding=(0, 1),
+        ))
+    if verbose and state.get("counterexample"):
+        console.print(f"    [dim red]Counterexample: {state['counterexample'][:200]}[/dim red]")
+
+    if verbose and state.get("_test_source"):
+        test_src = state["_test_source"]
+        # Show the test file so we can debug compilation/import errors
+        preview_lines = test_src.splitlines()[:40]
+        if len(test_src.splitlines()) > 40:
+            preview_lines.append("    # ... (truncated)")
+        console.print(Panel(
+            Syntax("\n".join(preview_lines), "python", theme="monokai", line_numbers=True),
+            title="[dim]Generated Test File[/dim]",
+            border_style="dim magenta",
+            expand=False,
+            padding=(0, 1),
+        ))
+
+
+# Dispatch table
+_NODE_LOGGERS = {
+    "spec": _show_spec_output,
+    "operator": _show_operator_output,
+    "translator": _show_translator_output,
+    "approval": _show_approval_output,
+    "coder": _show_coder_output,
+    "doer": _show_doer_output,
+}
+
+
+# ---------------------------------------------------------------------------
+# Main eval runner — now with streaming & observability
+# ---------------------------------------------------------------------------
 
 def run_dytm(
     model_name: str = "gpt-4o-mini",
+    executive_model_name: str | None = None,
     limit: int | None = None,
     offset: int = 0,
     max_retries: int = 3,
-    problem_timeout: int = 120,
+    max_spec_retries: int = 2,
+    problem_timeout: int = 180,
+    verbose: bool = False,
 ) -> Path:
     """Run the DYTM eval and write results to CSV."""
-    model = ChatOpenAI(model=model_name, temperature=0)
-    app = build_graph(model)
+    model = ChatOpenAI(model=model_name, temperature=0, timeout=90, max_retries=2)
+
+    # Executive LLM for contract approval (separate model, fresh context)
+    executive_model = None
+    if executive_model_name:
+        executive_model = ChatOpenAI(
+            model=executive_model_name, temperature=0, timeout=60, max_retries=2,
+        )
+
+    app = build_graph(model, executive_model=executive_model)
+
+    exec_tag = executive_model_name or "auto-approve"
 
     timestamp = time.strftime("%Y%m%d_%H%M%S")
     csv_path = RESULTS_DIR / f"dytm_{model_name}_{timestamp}.csv"
@@ -76,26 +318,46 @@ def run_dytm(
         "retries", "wall_clock_sec", "failure_reason",
     ]
 
+    problems = list(load_humaneval(limit=limit, offset=offset))
+    total = len(problems)
+
+    console.print()
+    console.print(Panel(
+        f"[bold cyan]DYTM Eval (v2)[/bold cyan]  |  model={model_name}  "
+        f"executive={exec_tag}\n"
+        f"problems={total}  max_retries={max_retries}  "
+        f"max_spec_retries={max_spec_retries}  "
+        f"timeout={problem_timeout}s  verbose={'on' if verbose else 'off'}",
+        border_style="cyan",
+    ))
+    console.print()
+
+    pass_count = 0
+    pbt_pass_count = 0
+
     with open(csv_path, "w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=fieldnames)
         writer.writeheader()
-
-        problems = list(load_humaneval(limit=limit, offset=offset))
-        total = len(problems)
 
         for i, problem in enumerate(problems):
             task_id = problem["task_id"]
             prompt = problem["prompt"]
             entry_point = problem["entry_point"]
-            print(f"[{i+1}/{total}] {task_id} ... ", end="", flush=True)
+
+            # Header for this problem
+            console.rule(
+                f"[bold]{task_id}[/bold]  ({i+1}/{total})  "
+                f"fn={entry_point}",
+                style="blue",
+            )
 
             start = time.time()
             failure_reason = None
             pbt_passed = False
             retries = 0
+            final_state: dict = {}
 
             try:
-                # Build the DYTM prompt from the benchmark problem
                 dytm_prompt = (
                     f"Complete this Python function. The function name MUST be "
                     f"'{entry_point}'.\n\n{prompt}"
@@ -106,15 +368,33 @@ def run_dytm(
                     "mode": "eval",
                     "retry_count": 0,
                     "max_retries": max_retries,
+                    "spec_retry_count": 0,
+                    "max_spec_retries": max_spec_retries,
                 }
 
-                # Timeout per problem to avoid hanging
+                # Timeout per problem
                 def _timeout_handler(signum, frame):
                     raise TimeoutError(f"Problem timed out after {problem_timeout}s")
                 old_handler = signal.signal(signal.SIGALRM, _timeout_handler)
                 signal.alarm(problem_timeout)
+
                 try:
-                    final_state = app.invoke(initial_state)
+                    # ---- STREAM instead of invoke ----
+                    node_start = time.time()
+                    for step in app.stream(initial_state, stream_mode="updates"):
+                        # step is {node_name: state_update}
+                        for node_name, state_update in step.items():
+                            node_elapsed_ms = int((time.time() - node_start) * 1000)
+                            final_state.update(state_update)
+
+                            # Log this node
+                            logger = _NODE_LOGGERS.get(node_name)
+                            if logger:
+                                logger(final_state, node_elapsed_ms, verbose)
+                            else:
+                                console.print(f"  [dim]▸ {node_name} ({node_elapsed_ms}ms)[/dim]")
+
+                            node_start = time.time()
                 finally:
                     signal.alarm(0)
                     signal.signal(signal.SIGALRM, old_handler)
@@ -124,7 +404,24 @@ def run_dytm(
                 retries = final_state.get("retry_count", 0)
 
                 # Run canonical tests (ground truth)
-                passed = _run_canonical_tests(code, problem)
+                canon_start = time.time()
+                passed, canon_detail = _run_canonical_tests(code, problem)
+                canon_ms = int((time.time() - canon_start) * 1000)
+                canon_tag = "[green]PASS[/green]" if passed else "[red]FAIL[/red]"
+                console.print(
+                    f"  [bold]📊 CANONICAL[/bold] → {canon_tag}  [dim]{canon_ms}ms[/dim]"
+                )
+
+                if verbose and not passed and canon_detail:
+                    # Show the last few lines of the canonical failure
+                    console.print(Panel(
+                        canon_detail[:1000],
+                        title="[dim]Canonical Test Error[/dim]",
+                        border_style="dim red",
+                        expand=False,
+                        padding=(0, 1),
+                    ))
+
                 if not passed:
                     failure_reason = "canonical_tests_failed"
                     if not pbt_passed:
@@ -133,12 +430,26 @@ def run_dytm(
             except Exception as exc:
                 passed = False
                 failure_reason = str(exc)[:200]
+                console.print(f"  [bold red]💥 EXCEPTION:[/bold red] {failure_reason}")
 
             elapsed = time.time() - start
-            status = "PASS" if passed else "FAIL"
-            pbt_tag = " (PBT:OK)" if pbt_passed else " (PBT:FAIL)"
-            retry_tag = f" retries={retries}" if retries > 0 else ""
-            print(f"{status}{pbt_tag}{retry_tag} ({elapsed:.1f}s)")
+
+            # Summary line
+            if passed:
+                pass_count += 1
+            if pbt_passed:
+                pbt_pass_count += 1
+
+            pbt_tag = "[green]PBT:OK[/green]" if pbt_passed else "[red]PBT:FAIL[/red]"
+            result_tag = "[bold green]PASS[/bold green]" if passed else "[bold red]FAIL[/bold red]"
+            running_pct = pass_count / (i + 1) * 100
+
+            console.print(
+                f"  [bold]→ {result_tag}  {pbt_tag}  "
+                f"retries={retries}  {elapsed:.1f}s  "
+                f"running={pass_count}/{i+1} ({running_pct:.0f}%)[/bold]"
+            )
+            console.print()
 
             writer.writerow({
                 "problem_id": task_id,
@@ -160,15 +471,39 @@ def _print_summary(csv_path: Path) -> None:
     with open(csv_path, encoding="utf-8") as f:
         reader = list(csv.DictReader(f))
     total = len(reader)
+    if total == 0:
+        console.print("[yellow]No results recorded.[/yellow]")
+        return
+
     passed = sum(1 for r in reader if r["passed"] == "True")
     pbt_passed = sum(1 for r in reader if r["pbt_passed"] == "True")
-    avg_retries = sum(int(r["retries"]) for r in reader) / max(total, 1)
-    print(f"\n{'='*50}")
-    print(f"DYTM Results: {passed}/{total} = {passed/total*100:.1f}% pass@1")
-    print(f"PBT pass rate: {pbt_passed}/{total} = {pbt_passed/total*100:.1f}%")
-    print(f"Avg retries: {avg_retries:.1f}")
-    print(f"Results saved to: {csv_path}")
-    print(f"{'='*50}")
+    avg_retries = sum(int(r["retries"]) for r in reader) / total
+    avg_time = sum(float(r["wall_clock_sec"]) for r in reader) / total
+    total_time = sum(float(r["wall_clock_sec"]) for r in reader)
+
+    table = Table(title="DYTM Eval Summary", border_style="cyan", show_lines=True)
+    table.add_column("Metric", style="bold")
+    table.add_column("Value", justify="right")
+    table.add_row("Canonical pass@1", f"{passed}/{total} = {passed/total*100:.1f}%")
+    table.add_row("PBT pass rate", f"{pbt_passed}/{total} = {pbt_passed/total*100:.1f}%")
+    table.add_row("Avg retries", f"{avg_retries:.2f}")
+    table.add_row("Avg time/problem", f"{avg_time:.1f}s")
+    table.add_row("Total time", f"{total_time:.0f}s ({total_time/60:.1f}m)")
+    table.add_row("Results file", str(csv_path))
+
+    # Failure breakdown
+    failure_reasons: dict[str, int] = {}
+    for r in reader:
+        reason = r.get("failure_reason", "")
+        if reason:
+            failure_reasons[reason] = failure_reasons.get(reason, 0) + 1
+    if failure_reasons:
+        breakdown = "  ".join(f"{k}: {v}" for k, v in sorted(failure_reasons.items(), key=lambda x: -x[1])[:5])
+        table.add_row("Top failures", breakdown)
+
+    console.print()
+    console.print(table)
+    console.print()
 
 
 def main():
@@ -177,17 +512,27 @@ def main():
     parser.add_argument("--offset", type=int, default=0)
     parser.add_argument("--model", type=str, default="gpt-4o-mini")
     parser.add_argument("--max-retries", type=int, default=3)
+    parser.add_argument("--max-spec-retries", type=int, default=2,
+                        help="Max times the Executive can reject and Spec revises")
+    parser.add_argument("--executive-model", type=str, default=None,
+                        help="Model for Executive LLM approval (e.g. gpt-4o-mini). "
+                             "If not set, contracts are auto-approved.")
+    parser.add_argument("--verbose", "-v", action="store_true",
+                        help="Show generated code, CNL contracts, and error traces")
     args = parser.parse_args()
 
     if not os.environ.get("OPENAI_API_KEY"):
-        print("ERROR: OPENAI_API_KEY not set.")
+        console.print("[red bold]ERROR: OPENAI_API_KEY not set.[/red bold]")
         sys.exit(1)
 
     run_dytm(
         model_name=args.model,
+        executive_model_name=args.executive_model,
         limit=args.limit,
         offset=args.offset,
         max_retries=args.max_retries,
+        max_spec_retries=args.max_spec_retries,
+        verbose=args.verbose,
     )
 
 

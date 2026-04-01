@@ -45,6 +45,9 @@ class DYTMState(TypedDict, total=False):
 
     # -- Approval gate ------------------------------------------------------
     approved: bool
+    approval_feedback: Optional[str]  # Executive LLM reasoning or human feedback
+    spec_retry_count: int  # how many times the contract was rejected & revised
+    max_spec_retries: int  # upper bound on spec revision attempts
 
     # -- Doer output --------------------------------------------------------
     test_result: str  # "pass" | "fail" | "error"
@@ -59,3 +62,5 @@ class DYTMState(TypedDict, total=False):
     # -- Config -------------------------------------------------------------
     mode: Literal["eval", "free"]
 
+    # -- Debug / diagnostics ------------------------------------------------
+    _test_source: Optional[str]  # compiled test file content (for verbose output)

@@ -308,6 +308,7 @@ def doer_node(state: DYTMState) -> dict:
             "test_result": "error",
             "error_trace": f"Test compilation failed: {exc}",
             "retry_count": retry_count + 1,
+            "_test_source": "",
         }
 
     # ---- Step 3: Write to tempdir & execute ------------------------------
@@ -317,7 +318,7 @@ def doer_node(state: DYTMState) -> dict:
 
         try:
             result = subprocess.run(
-                [sys.executable, "-m", "pytest", str(test_file), "-x", "--tb=short", "-q"],
+                [sys.executable, "-m", "pytest", str(test_file), "-x", "--tb=long", "-q"],
                 capture_output=True,
                 timeout=EXECUTION_TIMEOUT,
                 text=True,
@@ -330,6 +331,7 @@ def doer_node(state: DYTMState) -> dict:
                 "test_result": "fail",
                 "error_trace": f"Execution timed out after {EXECUTION_TIMEOUT}s",
                 "retry_count": retry_count + 1,
+                "_test_source": test_source,
             }
 
     # ---- Step 4: Parse results -------------------------------------------
@@ -337,6 +339,7 @@ def doer_node(state: DYTMState) -> dict:
         return {
             "security_passed": True,
             "test_result": "pass",
+            "_test_source": test_source,
         }
 
     # Tests failed — extract counterexample
@@ -351,6 +354,7 @@ def doer_node(state: DYTMState) -> dict:
         "error_trace": combined_output.strip(),
         "counterexample": counterexample,
         "retry_count": retry_count + 1,
+        "_test_source": test_source,
     }
 
 
