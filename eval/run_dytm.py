@@ -13,6 +13,7 @@ from __future__ import annotations
 import argparse
 import csv
 import os
+import signal
 import subprocess
 import sys
 import tempfile
@@ -61,6 +62,7 @@ def run_dytm(
     limit: int | None = None,
     offset: int = 0,
     max_retries: int = 3,
+    problem_timeout: int = 120,
 ) -> Path:
     """Run the DYTM eval and write results to CSV."""
     model = ChatOpenAI(model=model_name, temperature=0)
@@ -106,7 +108,16 @@ def run_dytm(
                     "max_retries": max_retries,
                 }
 
-                final_state = app.invoke(initial_state)
+                # Timeout per problem to avoid hanging
+                def _timeout_handler(signum, frame):
+                    raise TimeoutError(f"Problem timed out after {problem_timeout}s")
+                old_handler = signal.signal(signal.SIGALRM, _timeout_handler)
+                signal.alarm(problem_timeout)
+                try:
+                    final_state = app.invoke(initial_state)
+                finally:
+                    signal.alarm(0)
+                    signal.signal(signal.SIGALRM, old_handler)
 
                 code = final_state.get("code", "")
                 pbt_passed = final_state.get("test_result") == "pass"

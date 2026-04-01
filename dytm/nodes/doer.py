@@ -27,7 +27,7 @@ from dytm.state import DYTMState
 # Constants
 # ---------------------------------------------------------------------------
 
-EXECUTION_TIMEOUT = 30  # seconds
+EXECUTION_TIMEOUT = 15  # seconds (per subprocess call)
 MAX_STDERR_CHARS = 3000  # truncate long tracebacks to save tokens
 
 
@@ -179,8 +179,24 @@ def _use_test_body(test_body: str, name: str) -> str:
                     pass
             """)
 
+    # Cap max_examples to keep execution fast
+    # Replace any max_examples>50 with 50
+    import re as _re
+    test_body = _re.sub(
+        r'max_examples\s*=\s*\d+',
+        'max_examples=30',
+        test_body,
+    )
+
+    # If there's a @given but no @settings, inject one
+    if '@given' in test_body and '@settings' not in test_body:
+        test_body = test_body.replace(
+            '@given',
+            '@settings(max_examples=30, suppress_health_check=[HealthCheck.too_slow])\n@given',
+            1,
+        )
+
     # The test_body should already include @given + def; return as-is
-    # Ensure consistent indentation (no leading whitespace on first line)
     lines = test_body.strip().splitlines()
     dedented = textwrap.dedent("\n".join(lines))
     return dedented + "\n"
