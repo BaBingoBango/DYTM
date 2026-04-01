@@ -82,6 +82,10 @@ def _compile_test_file(code: str, pbt: dict) -> str:
             test_blocks.append(_compile_invariant(safe_name, func_name, expected))
         elif ptype == "edge_case":
             edge_input = prop.get("input", "None")
+            # Strip outer parens — LLM often wraps multi-arg inputs like "(5, 0)"
+            # but we need "5, 0" so it becomes func(5, 0) not func((5, 0))
+            if edge_input.startswith("(") and edge_input.endswith(")"):
+                edge_input = edge_input[1:-1].strip()
             edge_behavior = prop.get("expected_behavior", expected)
             test_blocks.append(
                 _compile_edge_case(safe_name, func_name, edge_input, edge_behavior)
