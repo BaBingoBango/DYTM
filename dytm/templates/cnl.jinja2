@@ -1,6 +1,13 @@
 VERIFICATION CONTRACT — {{ function_name }}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 {% for prop in properties %}
-{{ loop.index }}. {% if prop.type == "output_type" %}The function MUST return a value of type: {{ prop.expected }}.{% elif prop.type == "membership" %}The returned value MUST satisfy: {{ prop.expected }}.{% elif prop.type == "invariant" %}The following invariant MUST hold: {{ prop.expected }}.{% elif prop.type == "edge_case" %}EDGE CASE: When given {{ prop.input | default("the specified input", true) }}, the function MUST {{ prop.expected_behavior | default(prop.expected, true) }}.{% endif %}
+{% if prop.type == "output_type" %}
+{{ loop.index }}. The function MUST return a value of type: {{ prop.expected }}.
+{% elif prop.type == "membership" %}
+{{ loop.index }}. The returned value MUST satisfy: {{ prop.expected }}.
+{% elif prop.type == "invariant" %}
+{{ loop.index }}. The following invariant MUST hold: {{ prop.expected }}.
+{% elif prop.type == "edge_case" %}
+{{ loop.index }}. EDGE CASE: When given {{ prop.input | default("the specified input", true) }}, the function MUST {{ prop.expected_behavior | default(prop.expected, true) }}.
+{% endif %}
 {% endfor %}
-

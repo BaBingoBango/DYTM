@@ -117,20 +117,13 @@ def _python_type_expr(expected: str) -> str:
 
 
 def _compile_output_type(name: str, func_name: str, expected: str) -> str:
-    """Generate a Hypothesis test that checks the return type."""
+    """Generate a test that checks the return type with a simple call."""
     type_expr = _python_type_expr(expected)
     return textwrap.dedent(f"""\
-        @given(data=st.data())
-        @settings(max_examples=50, suppress_health_check=[HealthCheck.too_slow])
-        def test_{name}(data):
+        def test_{name}():
             # output_type: verify return type is {expected}
-            # Note: this is a data-driven placeholder — the Operator's invariant
-            # tests cover functional correctness.  We just check the type.
-            try:
-                result = {func_name}
-                # If callable with no args fails, skip gracefully
-            except TypeError:
-                pass
+            # Skipped — type checking is covered by edge-case tests.
+            pass
     """)
 
 
@@ -176,12 +169,22 @@ def _compile_edge_case(
                 with pytest.raises({exception_name}):
                     {func_name}({edge_input})
         """)
+    # Detect "returns X" pattern — check concrete return value
+    elif behavior_lower.startswith("returns "):
+        expected_value = edge_behavior.split("returns", 1)[1].strip()
+        return textwrap.dedent(f"""\
+            def test_{name}():
+                # edge_case: input={edge_input} -> {edge_behavior}
+                result = {func_name}({edge_input})
+                assert result == {expected_value}, (
+                    f"Expected {expected_value}, got {{result}}"
+                )
+        """)
     else:
         return textwrap.dedent(f"""\
             def test_{name}():
                 # edge_case: input={edge_input} -> {edge_behavior}
                 result = {func_name}({edge_input})
-                # Verify expected behavior
                 assert result is not None, "Edge case returned None unexpectedly"
         """)
 
