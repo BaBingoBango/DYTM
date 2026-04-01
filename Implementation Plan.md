@@ -299,3 +299,48 @@ Understanding the landscape is critical for the paper. Here's what to cite, what
 | Structured output failures on non-OpenAI models | Medium — blocks multi-model eval | Fallback to tool-calling or JSON-mode with manual parsing |
 | Subprocess timeout on complex Hypothesis tests | Low — some problems hang | 30s timeout + max retry cap prevents infinite loops |
 
+---
+
+## V1 Findings & Post-Mortem
+
+> Added after completing the full 164-problem HumanEval evaluation.
+
+### Pipeline Evolution
+
+The V1 pipeline evolved significantly from the original plan:
+
+1. **V1 (Phases 1-3)**: Single Operator node generates code + PBTs together.
+2. **V2 (current)**: Separated pipeline — **Spec** (PBTs only, no code) → **Translator** → **Executive Approval** (LLM gate) → **Coder** (code on fresh context) → **Doer**. Key insight: the verification contract must be approved *before any code exists*, and the Coder must have *no memory* of the Spec conversation.
+
+### The Evaluation Gap — The Key Finding
+
+The most important finding is not the benchmark numbers — it's that **HumanEval is the wrong evaluation for DYTM's core thesis**.
+
+DYTM is a protocol for verifying *intent*. Its value comes from step 4 of the original description: "The executive approves or returns the CNL." This requires an independent intent-holder — a human who knows what they want and can confirm whether the contract captures it.
+
+On HumanEval, the "intent" is a docstring. There is no independent intent-holder. The LLM reads the docstring to write the Spec, reads it again to approve the Spec, and reads it again to write the code. All three interpretations are correlated — when the model misunderstands the task, it misunderstands it at every stage, and verification provides zero signal.
+
+**The regressions (9 problems)** are the evidence: DYTM adds an extra interpretation step (docstring → contract → code instead of docstring → code). Without a human to validate the contract, this extra step is pure risk — an additional opportunity for correlated misinterpretation.
+
+**The fixes (12 problems)** come from DYTM's secondary mechanism — the PBT retry loop — not from intent verification. When the contract happens to be correct, Hypothesis counterexamples provide a powerful deterministic error-correction signal that verbal self-reflection (Reflexion, Self-Refine) cannot match.
+
+### Risk Register Post-Mortem
+
+| Original Risk | Occurred? | Notes |
+|---|---|---|
+| Operator produces low-quality PBTs | **Yes — this is the #1 failure mode** | 12/21 DYTM failures are "weak contracts" where PBTs pass but canonical tests fail. Extensive prompt tuning helped (from ~84% to ~87%) but hit a ceiling. The root cause is correlated errors: the same model misunderstands the task in both the Spec and the Code. |
+| Hypothesis strategy mapping too narrow | Partially | Early issues with `st.text()` for parentheses parsers, broad float ranges for root-finding. Fixed with prompt guidance for strategy domains. |
+| PBTs pass but canonical tests fail | **Yes — 57% of all failures** | This was correctly identified as a risk. The "edge-only-fail soft pass" heuristic helps but doesn't solve the core problem of weak invariants. |
+| Structured output failures | Once | HumanEval/22 hit a JSON parse error (API 400). Rare but cost 1 problem. |
+| Subprocess timeout | Rare | 180s timeout was sufficient. Some problems needed 3-4 retries but didn't timeout. |
+
+### What Would a Correct Evaluation Look Like?
+
+1. **User study**: N participants use Free Mode to solve coding tasks. Measure whether reviewing the CNL contract before code generation reduces intent mismatches compared to direct code generation (baseline). This tests the *primary* mechanism.
+
+2. **Adversarial intent benchmark**: Create tasks where the spec is deliberately ambiguous (e.g., "sort the list" — ascending or descending?). Measure whether DYTM + human-in-the-loop catches the ambiguity and produces the user's intended behavior, while the baseline guesses wrong.
+
+3. **MAS communication study**: In a multi-agent system, measure whether requiring DYTM CNL verification between agent pairs reduces cascading errors compared to free-form natural language delegation.
+
+The HumanEval result (+1.8%) is a valid supporting data point showing the PBT retry loop provides secondary value. But it is not — and cannot be — evidence for or against DYTM's core thesis.
+

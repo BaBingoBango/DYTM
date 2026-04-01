@@ -102,7 +102,7 @@ def _get_approval() -> tuple[bool, str]:
             console.print("[dim]Please enter Y, N, or Q.[/dim]")
 
 
-def _run_task(spec_fn, coder_fn, prompt: str, max_retries: int = 3) -> dict:
+def _run_task(spec_fn, coder_fn, prompt: str, max_retries: int = 4) -> dict:
     """Run one task through the DYTM v2 loop with interactive approval.
 
     Phase A: Spec generates PBTs only → Translator renders CNL → Human approves

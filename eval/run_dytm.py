@@ -448,7 +448,7 @@ def run_dytm(
     executive_model_name: str | None = None,
     limit: int | None = None,
     offset: int = 0,
-    max_retries: int = 3,
+    max_retries: int = 4,
     max_spec_retries: int = 2,
     problem_timeout: int = 180,
     verbose: bool = False,
@@ -580,7 +580,7 @@ def main():
     parser.add_argument("--limit", type=int, default=None)
     parser.add_argument("--offset", type=int, default=0)
     parser.add_argument("--model", type=str, default="gpt-4o-mini")
-    parser.add_argument("--max-retries", type=int, default=3)
+    parser.add_argument("--max-retries", type=int, default=4)
     parser.add_argument("--max-spec-retries", type=int, default=2,
                         help="Max times the Executive can reject and Spec revises")
     parser.add_argument("--executive-model", type=str, default=None,

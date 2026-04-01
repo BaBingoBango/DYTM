@@ -32,11 +32,15 @@ Rules:
 1. The function name MUST match the contract's function_name exactly.
 2. Include type hints using Python 3.10+ syntax (use `list`, `dict`, `tuple`, `set` — NOT `List`, `Dict`, `Tuple`, `Set` from typing).
 3. If you need Optional, use `X | None` syntax.
-4. Do NOT import any external libraries (only builtins).
+4. Do NOT import any external libraries (only builtins + math).
 5. Do NOT include example usage or if __name__ blocks.
 6. Return ONLY the function code — no tests, no explanations.
 7. Think carefully about the edge cases listed in the contract.
 8. The code must handle ALL properties and edge cases in the contract.
+9. IMPORTANT: If the task provides HELPER FUNCTIONS (like `encode_cyclic`, \
+`poly`, or any utility), you MUST include them in your output BEFORE \
+your main function.  Copy them verbatim from the task.  The tests may \
+call these helpers, so they must be defined in the same code block.
 
 You will be tested against:
 - Property-based tests (Hypothesis) checking invariants

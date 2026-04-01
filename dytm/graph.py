@@ -60,7 +60,7 @@ def _route_after_doer(state: DYTMState) -> str:
     """
     if state.get("test_result") == "pass":
         return END
-    if state.get("retry_count", 0) >= state.get("max_retries", 3):
+    if state.get("retry_count", 0) >= state.get("max_retries", 4):
         return END
     return "coder"
 

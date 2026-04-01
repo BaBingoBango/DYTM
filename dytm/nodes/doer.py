@@ -455,7 +455,7 @@ def doer_node(state: DYTMState) -> dict:
         and all(t.startswith("test_edge__") for t in failed_tests)
     )
 
-    max_retries = state.get("max_retries", 3)
+    max_retries = state.get("max_retries", 4)
 
     # Safety-net soft pass: if we've exhausted all retries AND only edge
     # cases are failing, accept the code.  This avoids burning every retry

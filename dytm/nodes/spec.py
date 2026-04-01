@@ -52,6 +52,33 @@ Property type guide:
 `test_body` = a Hypothesis test that asserts the invariant.
 - **edge_case**: checks specific inputs. Uses `input` and `expected_behavior` fields (NO test_body needed).
 
+██████████████████████████████████████████████████████████████
+MOST IMPORTANT — DISCRIMINATING INVARIANTS:
+██████████████████████████████████████████████████████████████
+Your #1 job is to write invariants that would DISTINGUISH a correct \
+implementation from a plausible-but-wrong one.  A contract that only \
+checks the return type and a few edge cases is WEAK and USELESS — \
+it would accept buggy code.
+
+Ask yourself: "What is the CORE RELATIONSHIP between input and output?"
+Then express that as an invariant with test_body.
+
+Examples of STRONG discriminating invariants:
+- For "sum of a list": output == sum(input_list)
+- For "collisions of n left + n right cars": output == n * n
+- For "reverse a string": output == input[::-1]
+- For "sort a list": output == sorted(input_list)
+- For "decode(encode(x)) round-trip": decode(encode(s)) == s
+- For "count vowels": output == sum(1 for c in s if c in 'aeiou')
+
+These are the invariants that MATTER.  Without them, the contract is \
+just checking types and a handful of examples — any buggy implementation \
+that happens to get those examples right will pass.
+
+You MUST include at least one invariant property with a test_body that \
+checks the CORE INPUT→OUTPUT RELATIONSHIP over random inputs.
+██████████████████████████████████████████████████████████████
+
 IMPORTANT GUIDELINES:
 - Generate at least 3-5 edge_case properties with CONCRETE inputs and expected behaviors.
 - Edge case inputs must be valid Python expressions that can be passed directly to the function.
@@ -90,6 +117,32 @@ Match the EXACT wording of the task:
   - "greater than X" → use `>` (strict), NOT `>=`
   Getting `<` vs `<=` wrong causes Hypothesis to find boundary counterexamples \
 (e.g., threshold=0.0 with identical elements) that fail the test but not the code.
+- CRITICAL — ROUND-TRIP INVARIANTS: When the task involves encode/decode, \
+serialize/deserialize, or any reversible transformation, ALWAYS include an invariant \
+that checks `decode(encode(x)) == x` (or the equivalent) over random inputs. \
+This is the single strongest property for these tasks.
+- CRITICAL — HELPER FUNCTIONS IN TASK: When the task prompt PROVIDES helper \
+functions (e.g. an `encode_cyclic` function, a `poly` evaluation function, \
+or any utility), you MUST use them in your invariant test_body.  These helpers \
+will be available in the test file (the Coder will include them).  Copy the \
+helper function definition VERBATIM into your test_body so it's self-contained. \
+For example, if the task provides `encode_cyclic(s)` and asks you to write \
+`decode_cyclic(s)`, your test_body should define encode_cyclic inline and then \
+assert `decode_cyclic(encode_cyclic(s)) == s`.
+- CRITICAL — ALGORITHMIC PATTERN RECOGNITION: Identify the algorithmic pattern \
+in the task and use the STRONGEST possible invariant for that pattern:
+  - **Root-finding / solver**: "find x such that f(x) = 0" → invariant: \
+`abs(f(result)) < 1e-4`.  Plug the output back into the given function \
+and verify it's near zero.  If the task provides an evaluation function \
+(like `poly(coeffs, x)`), use it directly.
+  - **Encode/decode**: one function is given, write the inverse → invariant: \
+`decode(encode(x)) == x` for random x.  Include the given function in test_body.
+  - **Recursive sequences**: base cases + recurrence are given → invariant: \
+`f(n) == f(n-1) + f(n-2) + ...` for random n > base cases.
+  - **Sorting/ordering**: → invariant: `output == sorted(input)` or check \
+that output is a permutation AND ordered.
+  - **String transformation**: → invariant that computes the expected output \
+from scratch (e.g. `output == input[::-1]` for reverse).
 - Think carefully about what properties are NECESSARY and SUFFICIENT to ensure correctness.
 - Consider: what invariants would distinguish a correct implementation from a buggy one?
 

@@ -47,7 +47,7 @@ def main() -> None:
         "prompt": prompt,
         "mode": "eval",
         "retry_count": 0,
-        "max_retries": 3,
+        "max_retries": 4,
     }
 
     final_state = app.invoke(initial_state)
