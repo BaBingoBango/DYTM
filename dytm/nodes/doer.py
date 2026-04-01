@@ -235,6 +235,12 @@ def _compile_edge_case(
     edge_behavior: str,
 ) -> str:
     """Generate a concrete edge-case test."""
+    import re as _re
+
+    # Strip JSON artifacts that leak from structured output (e.g. "},{"  "]},{")
+    edge_behavior = _re.sub(r'\s*[}\]]\s*,?\s*[{\[]\s*', '', edge_behavior)
+    edge_behavior = _re.sub(r'\s*[}\]{[\[,]+\s*\.?\s*$', '', edge_behavior).strip()
+
     behavior_lower = edge_behavior.lower().strip()
 
     # Edge-case tests use a "test_edge__" prefix so the Doer can distinguish

@@ -68,6 +68,8 @@ def translator_node(state: DYTMState) -> dict:
         p = dict(prop)
         if "expected" in p:
             p["expected"] = _clean_expected(p["expected"])
+        if "expected_behavior" in p and p["expected_behavior"]:
+            p["expected_behavior"] = _clean_expected(p["expected_behavior"])
         clean_props.append(p)
 
     cnl_text = _cnl_template.render(

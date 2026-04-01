@@ -56,12 +56,25 @@ IMPORTANT GUIDELINES:
 - Generate at least 3-5 edge_case properties with CONCRETE inputs and expected behaviors.
 - Edge case inputs must be valid Python expressions that can be passed directly to the function.
 - For edge cases that should raise exceptions, use: expected_behavior="raises ExceptionType"
+  BUT ONLY when the task EXPLICITLY says the function should raise for certain inputs.
+  Do NOT invent error-handling requirements the task doesn't mention.
 - For edge cases with concrete return values, use: expected_behavior="returns <value>"
 - Think about: empty inputs, zero, negative numbers, single elements, large inputs, typical cases.
 - For test_body: use `from hypothesis import given, settings` and `hypothesis.strategies as st`. \
 The test file already imports these.
 - For test_body: the function under test is available by name in the test file scope.
 - For test_body: use Python 3.10+ type hints (lowercase `list`, `dict`, etc.) — NOT `List`, `Dict` from typing.
+- CRITICAL — STRATEGY DOMAIN: Hypothesis strategies in test_body MUST generate inputs \
+that are VALID for the function under test.  For example:
+  - If the function expects a string of parentheses: use `st.from_regex(r'[()\\s]*', fullmatch=True)`, \
+NOT `st.text()`.
+  - If the function expects a list of positive integers: use `st.lists(st.integers(min_value=1))`, \
+NOT `st.lists(st.integers())`.
+  - If the function expects floats in [0,1]: use `st.floats(min_value=0, max_value=1)`.
+  - Always use `allow_nan=False, allow_infinity=False` with `st.floats()` unless the task \
+specifically requires handling NaN/Inf.
+  Using too-broad strategies (like `st.text()` for a parentheses parser) causes false failures \
+when Hypothesis generates inputs outside the function's domain.
 - Think carefully about what properties are NECESSARY and SUFFICIENT to ensure correctness.
 - Consider: what invariants would distinguish a correct implementation from a buggy one?
 
