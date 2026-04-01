@@ -238,8 +238,9 @@ def _compile_edge_case(
     import re as _re
 
     # Strip JSON artifacts that leak from structured output (e.g. "},{"  "]},{")
-    edge_behavior = _re.sub(r'\s*[}\]]\s*,?\s*[{\[]\s*', '', edge_behavior)
-    edge_behavior = _re.sub(r'\s*[}\]{[\[,]+\s*\.?\s*$', '', edge_behavior).strip()
+    # Only target genuine field-boundary garbage — NOT legitimate Python like []
+    edge_behavior = _re.sub(r'[}\]]\s*,?\s*[{\[]\s*', ' ', edge_behavior)
+    edge_behavior = _re.sub(r'\s*[{},]+\s*\.?\s*$', '', edge_behavior).strip()
 
     behavior_lower = edge_behavior.lower().strip()
 

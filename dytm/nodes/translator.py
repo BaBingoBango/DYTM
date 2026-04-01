@@ -14,7 +14,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import copy
 import re
 
 from jinja2 import Environment, FileSystemLoader
@@ -37,12 +36,18 @@ _JSON_ARTIFACTS = re.compile(r'[{}\[\]]+[,.]?')
 
 
 def _clean_expected(value: str) -> str:
-    """Strip JSON artifacts from a property's expected field."""
+    """Strip JSON artifacts from a property's expected field.
+
+    Only targets genuine JSON field-boundary garbage (e.g. ``},{`` or ``],[``)
+    that can leak from LLM structured output.  Does NOT strip legitimate
+    Python bracket expressions like ``[]``, ``[1, 2]``, or ``(0, 1)``.
+    """
     cleaned = value.strip()
-    # Remove trailing JSON noise like "},{"  or "}."
-    cleaned = re.sub(r'\s*[}\]]\s*,?\s*[{\[]\s*', '', cleaned)
-    # Remove lone trailing }, {, ], [
-    cleaned = re.sub(r'\s*[}\]{[\[,]+\s*\.?\s*$', '', cleaned)
+    # Remove JSON field boundary artifacts: }...{ or ]...[
+    # e.g. "returns hello},{next field" → "returns hello next field"
+    cleaned = re.sub(r'[}\]]\s*,?\s*[{\[]\s*', ' ', cleaned)
+    # Remove trailing lone { } , (but NOT [ or ] which may be valid Python)
+    cleaned = re.sub(r'\s*[{},]+\s*\.?\s*$', '', cleaned)
     return cleaned.strip().rstrip('.') + '.' if cleaned else value
 
 
