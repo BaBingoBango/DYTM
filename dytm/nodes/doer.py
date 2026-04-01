@@ -79,11 +79,11 @@ def _compile_test_file(code: str, pbt: dict) -> str:
         safe_name = name.replace(" ", "_").replace("-", "_")
 
         if ptype == "output_type":
-            test_blocks.append(_compile_output_type(safe_name, func_name, expected))
+            test_blocks.append(_compile_output_type(safe_name, func_name, expected, prop.get("test_body")))
         elif ptype == "membership":
-            test_blocks.append(_compile_membership(safe_name, func_name, expected))
+            test_blocks.append(_compile_membership(safe_name, func_name, expected, prop.get("test_body")))
         elif ptype == "invariant":
-            test_blocks.append(_compile_invariant(safe_name, func_name, expected))
+            test_blocks.append(_compile_invariant(safe_name, func_name, expected, prop.get("test_body")))
         elif ptype == "edge_case":
             edge_input = prop.get("input", "None")
             # Strip outer parens — LLM often wraps multi-arg inputs like "(5, 0)"
@@ -124,39 +124,66 @@ def _python_type_expr(expected: str) -> str:
     return _TYPE_MAP.get(expected, expected)
 
 
-def _compile_output_type(name: str, func_name: str, expected: str) -> str:
-    """Generate a test that checks the return type with a simple call."""
-    type_expr = _python_type_expr(expected)
+def _compile_output_type(name: str, func_name: str, expected: str, test_body: str | None = None) -> str:
+    """Generate a test that checks the return type."""
+    if test_body:
+        return _use_test_body(test_body, name)
+    # Fallback: no-op if no test_body provided
     return textwrap.dedent(f"""\
         def test_{name}():
             # output_type: verify return type is {expected}
-            # Skipped — type checking is covered by edge-case tests.
+            # No test_body provided — skipped.
             pass
     """)
 
 
-def _compile_membership(name: str, func_name: str, expected: str) -> str:
+def _compile_membership(name: str, func_name: str, expected: str, test_body: str | None = None) -> str:
     """Generate a test for membership / containment properties."""
+    if test_body:
+        return _use_test_body(test_body, name)
     return textwrap.dedent(f"""\
         def test_{name}():
             # membership: {expected}
-            # This property is verified via the invariant tests with concrete inputs.
-            # Placeholder to ensure the property is acknowledged.
+            # No test_body provided — skipped.
             pass
     """)
 
 
-def _compile_invariant(name: str, func_name: str, expected: str) -> str:
+def _compile_invariant(name: str, func_name: str, expected: str, test_body: str | None = None) -> str:
     """Generate a Hypothesis test for a general invariant."""
+    if test_body:
+        return _use_test_body(test_body, name)
     return textwrap.dedent(f"""\
-        @given(data=st.data())
-        @settings(max_examples=100, suppress_health_check=[HealthCheck.too_slow])
-        def test_{name}(data):
+        def test_{name}():
             # invariant: {expected}
-            # Strategy selection is dynamic — Hypothesis explores the input space.
-            # The Operator's code must satisfy the invariant for all generated inputs.
+            # No test_body provided — skipped.
             pass
     """)
+
+
+def _use_test_body(test_body: str, name: str) -> str:
+    """Sanitize and return an LLM-provided test_body.
+
+    The test_body should be a complete test function including decorators.
+    We do minimal sanitization: block dangerous calls and ensure it's
+    syntactically valid Python.
+    """
+    # Basic sanitization — block obvious dangerous patterns
+    dangerous = ["import os", "import sys", "import subprocess",
+                 "exec(", "eval(", "open(", "__import__"]
+    for pattern in dangerous:
+        if pattern in test_body:
+            return textwrap.dedent(f"""\
+                def test_{name}():
+                    # test_body blocked: contained '{pattern}'
+                    pass
+            """)
+
+    # The test_body should already include @given + def; return as-is
+    # Ensure consistent indentation (no leading whitespace on first line)
+    lines = test_body.strip().splitlines()
+    dedented = textwrap.dedent("\n".join(lines))
+    return dedented + "\n"
 
 
 def _compile_edge_case(

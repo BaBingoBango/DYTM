@@ -60,6 +60,15 @@ class PBTProperty(BaseModel):
         default=None,
         description="(edge_case only) What should happen for the edge-case input",
     )
+    test_body: Optional[str] = Field(
+        default=None,
+        description=(
+            "Complete executable Python test function for this property "
+            "(including @given decorator and def line). Required for "
+            "output_type, membership, and invariant properties. The Doer "
+            "pastes this directly into the test file."
+        ),
+    )
 
 
 class PBTPayload(BaseModel):

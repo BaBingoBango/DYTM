@@ -38,22 +38,25 @@ The PBT payload must contain:
 - `properties`: a list of test properties.  Each property has:
   - `name`: short unique identifier (snake_case)
   - `type`: one of "output_type", "membership", "invariant", or "edge_case"
-  - `expected`: description of expected behaviour
+  - `expected`: human-readable description of expected behaviour (used for CNL contract display)
+  - `test_body`: (REQUIRED for output_type, membership, invariant) a complete Python test function including @given decorator and def line. This will be pasted directly into a pytest file and executed.
   - `input` (edge_case only): the specific input as a Python expression string
-  - `expected_behavior` (edge_case only): what should happen, e.g. "raises ValueError"
+  - `expected_behavior` (edge_case only): what should happen, e.g. "raises ValueError" or "returns 5"
 
 Property type guide:
-- **output_type**: checks the return type. The `expected` field must be a SIMPLE type name like "int", "str", "float", "bool", "list", "dict". No JSON syntax, no brackets, no commas.
-- **membership**: checks a containment relationship (e.g. expected="output in input_list")
-- **invariant**: checks a general invariant over random inputs (e.g. expected="len(output) >= 0")
-- **edge_case**: checks specific edge-case inputs with concrete expected behaviour
+- **output_type**: checks the return type. `expected` = simple type name (e.g. "int"). `test_body` = a Hypothesis test that calls the function with random valid inputs and checks isinstance.
+- **membership**: checks a containment relationship. `expected` = human description. `test_body` = a Hypothesis test that checks the relationship.
+- **invariant**: checks a general invariant over random inputs. `expected` = human description. `test_body` = a Hypothesis test that asserts the invariant.
+- **edge_case**: checks specific inputs. Uses `input` and `expected_behavior` fields (NO test_body needed).
 
 IMPORTANT GUIDELINES:
-- Generate at least 2-3 edge_case properties with CONCRETE inputs and expected behaviors.
+- Generate at least 3-5 edge_case properties with CONCRETE inputs and expected behaviors.
 - Edge case inputs must be valid Python expressions that can be passed directly to the function.
 - For edge cases that should raise exceptions, use: expected_behavior="raises ExceptionType"
 - For edge cases with concrete return values, use: expected_behavior="returns <value>"
-- Think about: empty inputs, zero, negative numbers, single elements, large inputs.
+- Think about: empty inputs, zero, negative numbers, single elements, large inputs, typical cases.
+- For test_body: use `from hypothesis import given, settings` and `hypothesis.strategies as st`. The test file already imports these.
+- For test_body: the function under test is available by name in the test file scope.
 
 Example for a "longest string in a list" task:
 
@@ -70,10 +73,25 @@ pbt:
 {
   "function_name": "longest_string",
   "properties": [
-    {"name": "returns_a_string", "type": "output_type", "expected": "str"},
-    {"name": "result_is_in_input", "type": "membership", "expected": "output in input_list"},
-    {"name": "no_string_is_longer", "type": "invariant", "expected": "len(output) >= len(s) for all s in input_list"},
-    {"name": "single_element", "type": "edge_case", "expected": "returns hello", "input": "['hello']", "expected_behavior": "returns hello"},
+    {
+      "name": "returns_a_string",
+      "type": "output_type",
+      "expected": "str",
+      "test_body": "@given(input_list=st.lists(st.text(min_size=1), min_size=1))\n@settings(max_examples=50)\ndef test_returns_a_string(input_list):\n    result = longest_string(input_list)\n    assert isinstance(result, str)"
+    },
+    {
+      "name": "result_is_in_input",
+      "type": "membership",
+      "expected": "output is always a member of the input list",
+      "test_body": "@given(input_list=st.lists(st.text(min_size=1), min_size=1))\n@settings(max_examples=50)\ndef test_result_is_in_input(input_list):\n    result = longest_string(input_list)\n    assert result in input_list"
+    },
+    {
+      "name": "no_string_is_longer",
+      "type": "invariant",
+      "expected": "len(output) >= len(s) for all s in input_list",
+      "test_body": "@given(input_list=st.lists(st.text(), min_size=1))\n@settings(max_examples=50)\ndef test_no_string_is_longer(input_list):\n    result = longest_string(input_list)\n    assert all(len(result) >= len(s) for s in input_list)"
+    },
+    {"name": "single_element", "type": "edge_case", "expected": "returns hello", "input": "['hello']", "expected_behavior": "returns 'hello'"},
     {"name": "empty_list_raises", "type": "edge_case", "expected": "raises ValueError", "input": "", "expected_behavior": "raises ValueError"}
   ]
 }
