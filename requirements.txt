@@ -1,0 +1,11 @@
+langgraph
+langchain-openai
+langchain-anthropic
+langsmith
+pydantic>=2.0
+hypothesis
+hypothesis-jsonschema
+jinja2
+rich
+pytest
+

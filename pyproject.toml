@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "dytm"
+version = "0.1.0"
+description = "DYTM — Do You Trust Me: A deterministic verification layer for LLM agents"
+requires-python = ">=3.11"
+dependencies = [
+    "langgraph",
+    "langchain-openai",
+    "langchain-anthropic",
+    "langsmith",
+    "pydantic>=2.0",
+    "hypothesis",
+    "hypothesis-jsonschema",
+    "jinja2",
+    "rich",
+]
+
+[project.optional-dependencies]
+dev = ["pytest"]
+
+[tool.setuptools.packages.find]
+include = ["dytm*"]
+
+
+
