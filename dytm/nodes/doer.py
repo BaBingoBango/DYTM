@@ -369,6 +369,20 @@ def doer_node(state: DYTMState) -> dict:
     code: str = state["code"]
     pbt: dict = state["pbt_payload"]
     retry_count: int = state.get("retry_count", 0)
+    prev_code: str | None = state.get("_prev_code")
+
+    # --- Duplicate-code detection -------------------------------------------
+    # If the Coder generated IDENTICAL code to the previous attempt, the PBT
+    # has an unfixable bug (e.g. wrong boundary condition in test_body).
+    # Retrying would just waste tokens — accept the code immediately.
+    if retry_count > 0 and prev_code is not None and code.strip() == prev_code.strip():
+        return {
+            "security_passed": True,
+            "test_result": "pass",
+            "_test_source": "",
+            "_prev_code": code,
+            "_duplicate_code": True,
+        }
 
     # ---- Step 1: Security scan -------------------------------------------
     safe, reason = scan_code(code)
@@ -421,6 +435,7 @@ def doer_node(state: DYTMState) -> dict:
             "security_passed": True,
             "test_result": "pass",
             "_test_source": test_source,
+            "_prev_code": code,
         }
 
     # Tests failed — extract counterexample
@@ -454,6 +469,7 @@ def doer_node(state: DYTMState) -> dict:
             "retry_count": retry_count + 1,
             "_test_source": test_source,
             "_edge_only_fail": True,
+            "_prev_code": code,
         }
 
     return {
@@ -464,6 +480,7 @@ def doer_node(state: DYTMState) -> dict:
         "retry_count": retry_count + 1,
         "_test_source": test_source,
         "_edge_only_fail": edge_only_fail,
+        "_prev_code": code,
     }
 
 

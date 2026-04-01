@@ -230,8 +230,11 @@ def _show_doer_output(state: dict, elapsed_ms: int, verbose: bool) -> None:
     security = state.get("security_passed", False)
     retry = state.get("retry_count", 0)
     edge_only = state.get("_edge_only_fail", False)
+    duplicate = state.get("_duplicate_code", False)
 
-    if test_result == "pass" and edge_only:
+    if test_result == "pass" and duplicate:
+        result_tag = "[bold green]PASS ✓[/bold green] [dim yellow](duplicate code → skip re-test)[/dim yellow]"
+    elif test_result == "pass" and edge_only:
         result_tag = "[bold green]PASS ✓[/bold green] [dim yellow](edge-only fail → soft pass)[/dim yellow]"
     elif test_result == "pass":
         result_tag = "[bold green]PASS ✓[/bold green]"

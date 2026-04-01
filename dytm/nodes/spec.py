@@ -75,6 +75,14 @@ NOT `st.lists(st.integers())`.
 specifically requires handling NaN/Inf.
   Using too-broad strategies (like `st.text()` for a parentheses parser) causes false failures \
 when Hypothesis generates inputs outside the function's domain.
+- CRITICAL — BOUNDARY PRECISION: In test_body, be precise about strict vs inclusive comparisons. \
+Match the EXACT wording of the task:
+  - "closer than X" / "less than X" → use `<` (strict), NOT `<=`
+  - "at most X" / "no more than X" → use `<=` (inclusive)
+  - "within X" / "up to X" → use `<=` (inclusive)
+  - "greater than X" → use `>` (strict), NOT `>=`
+  Getting `<` vs `<=` wrong causes Hypothesis to find boundary counterexamples \
+(e.g., threshold=0.0 with identical elements) that fail the test but not the code.
 - Think carefully about what properties are NECESSARY and SUFFICIENT to ensure correctness.
 - Consider: what invariants would distinguish a correct implementation from a buggy one?
 

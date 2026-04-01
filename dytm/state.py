@@ -65,3 +65,5 @@ class DYTMState(TypedDict, total=False):
     # -- Debug / diagnostics ------------------------------------------------
     _test_source: Optional[str]  # compiled test file content (for verbose output)
     _edge_only_fail: Optional[bool]  # True when PBT fails only on edge cases (soft pass)
+    _prev_code: Optional[str]  # previous code attempt (for duplicate detection)
+    _duplicate_code: Optional[bool]  # True when Coder generated same code as prev attempt
