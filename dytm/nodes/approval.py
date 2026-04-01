@@ -42,12 +42,14 @@ APPROVE if:
 - At least a few edge cases are present (empty inputs, single elements, etc.)
 - The invariants/properties would meaningfully distinguish correct from incorrect implementations
 - The return type is specified
+- The edge case expected values are mathematically correct (see below)
 
 REJECT only if:
 - The contract is fundamentally wrong (contradicts the task)
 - The contract is nearly empty or trivially tautological
 - The contract tests something completely different from what the task asks
 - Critical core behavior is missing entirely (not just missing obscure edge cases)
+- One or more edge case expected values are MATHEMATICALLY WRONG
 
 IMPORTANT guidelines:
 - Do NOT reject just because some edge cases are missing — no contract is perfect.
@@ -57,6 +59,17 @@ IMPORTANT guidelines:
 - A contract with 4-6 solid properties covering core behavior + basic edge cases is GOOD ENOUGH.
 - Bias toward APPROVE.  The contract will be tested against the code — \
   if properties are too weak, the code will still be tested by canonical tests.
+
+CRITICAL — VERIFY EDGE CASE MATH:
+For EVERY edge case in the contract, you MUST compute the expected value \
+yourself step by step.  Wrong expected values poison the entire verification.
+Examples of mistakes to catch:
+  - "product of [-1, -2, -3] returns 6" — WRONG, should be -6 \
+    (compute: -1 × -2 = 2, 2 × -3 = -6)
+  - "sum of [1, 2, 3] returns 5" — WRONG, should be 6
+  - "len('hello') returns 4" — WRONG, should be 5
+If ANY edge case expected value is wrong, REJECT and specify which edge \
+case is incorrect and what the correct value should be.
 
 Start your response with APPROVE or REJECT, then explain your reasoning briefly.
 """
@@ -135,12 +148,29 @@ def _executive_llm_approval(state: DYTMState, model: BaseChatModel | None) -> di
 
     cnl_text = state.get("cnl_text", "(no contract)")
     prompt = state.get("prompt", "(no task)")
+    pbt = state.get("pbt_payload", {})
+
+    # Extract edge cases for explicit math verification
+    edge_case_lines: list[str] = []
+    for prop in pbt.get("properties", []):
+        if prop.get("type") == "edge_case":
+            inp = prop.get("input", "?")
+            behavior = prop.get("expected_behavior", prop.get("expected", "?"))
+            edge_case_lines.append(f"  • input={inp} → {behavior}")
+
+    edge_case_section = ""
+    if edge_case_lines:
+        edge_case_section = (
+            "\n\nEDGE CASES TO VERIFY (compute each expected value step by step):\n"
+            + "\n".join(edge_case_lines)
+        )
 
     messages = [
         SystemMessage(content=EXECUTIVE_SYSTEM_PROMPT),
         HumanMessage(content=(
             f"TASK:\n{prompt}\n\n"
-            f"VERIFICATION CONTRACT:\n{cnl_text}\n\n"
+            f"VERIFICATION CONTRACT:\n{cnl_text}"
+            f"{edge_case_section}\n\n"
             f"Should this contract be APPROVED or REJECTED?  "
             f"Start your response with APPROVE or REJECT, then explain."
         )),

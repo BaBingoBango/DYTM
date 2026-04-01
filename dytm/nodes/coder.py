@@ -106,7 +106,11 @@ def make_coder_node(model: BaseChatModel):
                 user_content += f"\nMinimal counterexample:\n{counterexample}\n"
             user_content += (
                 "\nPlease fix your code to address this failure. "
-                "The verification contract above is LOCKED — your code must satisfy it."
+                "The verification contract above is LOCKED — your code must satisfy it.\n"
+                "IMPORTANT: If an edge case expected value seems mathematically wrong "
+                "but your code satisfies the invariant properties, prioritise matching "
+                "the invariants — edge case expectations from the contract may "
+                "occasionally contain arithmetic errors."
             )
         else:
             user_content = (

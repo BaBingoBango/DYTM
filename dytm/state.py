@@ -64,3 +64,4 @@ class DYTMState(TypedDict, total=False):
 
     # -- Debug / diagnostics ------------------------------------------------
     _test_source: Optional[str]  # compiled test file content (for verbose output)
+    _edge_only_fail: Optional[bool]  # True when PBT fails only on edge cases (soft pass)

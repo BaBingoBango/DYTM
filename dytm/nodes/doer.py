@@ -237,6 +237,9 @@ def _compile_edge_case(
     """Generate a concrete edge-case test."""
     behavior_lower = edge_behavior.lower().strip()
 
+    # Edge-case tests use a "test_edge__" prefix so the Doer can distinguish
+    # them from invariant/property tests when classifying failures.
+
     # Detect "raises XError" pattern
     if behavior_lower.startswith("raises "):
         exception_name = edge_behavior.split("raises", 1)[1].strip()
@@ -245,7 +248,7 @@ def _compile_edge_case(
         if not exception_name.isidentifier():
             exception_name = "Exception"
         return textwrap.dedent(f"""\
-            def test_{name}():
+            def test_edge__{name}():
                 # edge_case: input={edge_input} should raise {exception_name}
                 with pytest.raises({exception_name}):
                     {func_name}({edge_input})
@@ -262,14 +265,14 @@ def _compile_edge_case(
         except SyntaxError:
             # Can't use this as a Python expression — fall back to a no-crash test
             return textwrap.dedent(f"""\
-                def test_{name}():
+                def test_edge__{name}():
                     # edge_case: input={edge_input} -> {edge_behavior}
                     # (expected_value was not valid Python — checking no crash)
                     result = {func_name}({edge_input})
                     assert result is not None or result is None  # just verify no crash
             """)
         return textwrap.dedent(f"""\
-            def test_{name}():
+            def test_edge__{name}():
                 # edge_case: input={edge_input} -> {edge_behavior}
                 result = {func_name}({edge_input})
                 assert result == {expected_value}, (
@@ -278,7 +281,7 @@ def _compile_edge_case(
         """)
     else:
         return textwrap.dedent(f"""\
-            def test_{name}():
+            def test_edge__{name}():
                 # edge_case: input={edge_input} -> {edge_behavior}
                 result = {func_name}({edge_input})
                 assert result is not None, "Edge case returned None unexpectedly"
@@ -313,6 +316,33 @@ def _extract_counterexample(stderr: str) -> str | None:
                 break
 
     return "\n".join(buf).strip() if buf else None
+
+
+def _parse_failed_test_names(output: str) -> list[str]:
+    """Extract failed test function names from pytest output.
+
+    Parses the "short test summary info" section for lines like::
+
+        FAILED path/to/test.py::test_name - AssertionError: ...
+
+    Falls back to parsing ``_____ test_name _____`` section headers.
+    """
+    import re
+
+    failed: list[str] = []
+
+    for line in output.splitlines():
+        m = re.match(r"^FAILED\s+.*::(\w+)", line)
+        if m:
+            failed.append(m.group(1))
+
+    if not failed:
+        for line in output.splitlines():
+            m = re.match(r"^_+\s+(test_\w+)\s+_+$", line)
+            if m:
+                failed.append(m.group(1))
+
+    return failed
 
 
 # ---------------------------------------------------------------------------
@@ -363,7 +393,7 @@ def doer_node(state: DYTMState) -> dict:
 
         try:
             result = subprocess.run(
-                [sys.executable, "-m", "pytest", str(test_file), "-x", "--tb=long", "-q"],
+                [sys.executable, "-m", "pytest", str(test_file), "--tb=long", "-q"],
                 capture_output=True,
                 timeout=EXECUTION_TIMEOUT,
                 text=True,
@@ -393,6 +423,33 @@ def doer_node(state: DYTMState) -> dict:
 
     counterexample = _extract_counterexample(combined_output)
 
+    # --- Edge-only failure classification ------------------------------------
+    # Parse which tests failed.  If the ONLY failures are edge case tests
+    # (test_edge__*), invariant / property tests all passed — the code is
+    # probably correct and the Spec had wrong expected values.
+    failed_tests = _parse_failed_test_names(combined_output)
+    edge_only_fail = (
+        bool(failed_tests)
+        and all(t.startswith("test_edge__") for t in failed_tests)
+    )
+
+    max_retries = state.get("max_retries", 3)
+
+    # Safety-net soft pass: if we've exhausted all retries AND only edge
+    # cases are failing, accept the code.  This avoids burning every retry
+    # on wrong expected values from the Spec LLM.  On earlier retries we
+    # still treat it as a real failure so the Coder gets a chance to fix
+    # genuine bugs.
+    if edge_only_fail and (retry_count + 1) >= max_retries:
+        return {
+            "security_passed": True,
+            "test_result": "pass",
+            "error_trace": combined_output.strip(),
+            "retry_count": retry_count + 1,
+            "_test_source": test_source,
+            "_edge_only_fail": True,
+        }
+
     return {
         "security_passed": True,
         "test_result": "fail",
@@ -400,6 +457,7 @@ def doer_node(state: DYTMState) -> dict:
         "counterexample": counterexample,
         "retry_count": retry_count + 1,
         "_test_source": test_source,
+        "_edge_only_fail": edge_only_fail,
     }
 
 

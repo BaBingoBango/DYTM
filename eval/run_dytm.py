@@ -229,9 +229,14 @@ def _show_doer_output(state: dict, elapsed_ms: int, verbose: bool) -> None:
     test_result = state.get("test_result", "?")
     security = state.get("security_passed", False)
     retry = state.get("retry_count", 0)
+    edge_only = state.get("_edge_only_fail", False)
 
-    if test_result == "pass":
+    if test_result == "pass" and edge_only:
+        result_tag = "[bold green]PASS ✓[/bold green] [dim yellow](edge-only fail → soft pass)[/dim yellow]"
+    elif test_result == "pass":
         result_tag = "[bold green]PASS ✓[/bold green]"
+    elif test_result == "fail" and edge_only:
+        result_tag = "[bold red]FAIL ✗[/bold red] [dim yellow](edge-only — invariants OK)[/dim yellow]"
     elif test_result == "fail":
         result_tag = "[bold red]FAIL ✗[/bold red]"
     else:
