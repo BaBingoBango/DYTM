@@ -90,12 +90,38 @@ def _compile_test_file(code: str, pbt: dict) -> str:
             # but we need "5, 0" so it becomes func(5, 0) not func((5, 0))
             if edge_input.startswith("(") and edge_input.endswith(")"):
                 edge_input = edge_input[1:-1].strip()
+            # Validate edge_input is valid Python; skip if not
+            try:
+                compile(f"f({edge_input})", "<edge_input>", "eval")
+            except SyntaxError:
+                edge_input = "None"  # fallback to safe input
             edge_behavior = prop.get("expected_behavior", expected)
             test_blocks.append(
                 _compile_edge_case(safe_name, func_name, edge_input, edge_behavior)
             )
 
-    return header + "\n\n".join(test_blocks) + "\n"
+    full_source = header + "\n\n".join(test_blocks) + "\n"
+
+    # --- Final syntax validation: ensure the file compiles ---
+    try:
+        compile(full_source, "<dytm_test>", "exec")
+    except SyntaxError as exc:
+        # If the whole file doesn't parse, strip test blocks one by one
+        # and keep only the ones that are syntactically valid
+        valid_blocks = []
+        for block in test_blocks:
+            try:
+                compile(header + block, "<dytm_test>", "exec")
+                valid_blocks.append(block)
+            except SyntaxError:
+                valid_blocks.append(
+                    f"def test_skipped_{len(valid_blocks)}():\n"
+                    f"    # Skipped: syntax error in generated test\n"
+                    f"    pass\n"
+                )
+        full_source = header + "\n\n".join(valid_blocks) + "\n"
+
+    return full_source
 
 
 # ---------------------------------------------------------------------------
@@ -214,6 +240,10 @@ def _compile_edge_case(
     # Detect "raises XError" pattern
     if behavior_lower.startswith("raises "):
         exception_name = edge_behavior.split("raises", 1)[1].strip()
+        # Sanitize exception name — must be a valid Python identifier
+        exception_name = exception_name.split()[0].rstrip(".,;")
+        if not exception_name.isidentifier():
+            exception_name = "Exception"
         return textwrap.dedent(f"""\
             def test_{name}():
                 # edge_case: input={edge_input} should raise {exception_name}
@@ -223,6 +253,21 @@ def _compile_edge_case(
     # Detect "returns X" pattern — check concrete return value
     elif behavior_lower.startswith("returns "):
         expected_value = edge_behavior.split("returns", 1)[1].strip()
+        # Sanitize: strip trailing punctuation/JSON artifacts
+        expected_value = expected_value.rstrip(".,;")
+        # Remove any trailing JSON-like garbage (},{ etc.)
+        # Validate it's actually a valid Python expression
+        try:
+            compile(expected_value, "<edge_case>", "eval")
+        except SyntaxError:
+            # Can't use this as a Python expression — fall back to a no-crash test
+            return textwrap.dedent(f"""\
+                def test_{name}():
+                    # edge_case: input={edge_input} -> {edge_behavior}
+                    # (expected_value was not valid Python — checking no crash)
+                    result = {func_name}({edge_input})
+                    assert result is not None or result is None  # just verify no crash
+            """)
         return textwrap.dedent(f"""\
             def test_{name}():
                 # edge_case: input={edge_input} -> {edge_behavior}

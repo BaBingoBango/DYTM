@@ -36,7 +36,7 @@ def _route_after_approval(state: DYTMState) -> str:
 
     - Approved → coder (generate code against the locked contract)
     - Rejected + retries left → spec (revise the contract)
-    - Rejected + out of retries → END
+    - Rejected + out of retries → coder (proceed with best-effort contract)
     """
     if state.get("approved"):
         return "coder"
@@ -44,7 +44,9 @@ def _route_after_approval(state: DYTMState) -> str:
     spec_retries = state.get("spec_retry_count", 0)
     max_spec_retries = state.get("max_spec_retries", 2)
     if spec_retries >= max_spec_retries:
-        return END
+        # Exhausted revision attempts — proceed with best-effort contract
+        # rather than ending with no code at all
+        return "coder"
 
     return "spec"
 

@@ -47,7 +47,9 @@ def _run_canonical_tests(code: str, problem: dict, timeout: int = 30) -> bool:
     Returns True if all tests pass, False otherwise.
     """
     test_harness = build_canonical_test_code(problem)
-    full_code = code + "\n\n" + test_harness
+    # Add typing imports so code using List[float] etc. works
+    preamble = "from typing import *\nfrom collections import *\nimport math\n\n"
+    full_code = preamble + code + "\n\n" + test_harness
 
     with tempfile.TemporaryDirectory() as tmpdir:
         test_file = Path(tmpdir) / "test_canonical.py"

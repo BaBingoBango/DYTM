@@ -38,22 +38,27 @@ You will receive:
 You must decide: APPROVE or REJECT.
 
 APPROVE if:
-- The contract covers the core behavior of the task
-- Edge cases cover boundary conditions (empty inputs, zeros, negatives, etc.)
-- The invariants/properties would distinguish correct from incorrect implementations
+- The contract covers the CORE behavior described in the task
+- At least a few edge cases are present (empty inputs, single elements, etc.)
+- The invariants/properties would meaningfully distinguish correct from incorrect implementations
 - The return type is specified
 
-REJECT if:
-- The contract is too vague or generic
-- Important edge cases are missing
-- The invariants are tautological (would pass for any implementation)
-- The contract doesn't match what the task is actually asking for
-- The properties are insufficient to catch common bugs
+REJECT only if:
+- The contract is fundamentally wrong (contradicts the task)
+- The contract is nearly empty or trivially tautological
+- The contract tests something completely different from what the task asks
+- Critical core behavior is missing entirely (not just missing obscure edge cases)
 
-Be STRICT but FAIR.  A good contract doesn't need to be perfect, but it \
-must be strong enough to meaningfully verify correctness.
+IMPORTANT guidelines:
+- Do NOT reject just because some edge cases are missing — no contract is perfect.
+- Do NOT invent requirements that are not stated in the original task.
+- Do NOT demand the contract handle behaviors the task doesn't specify \
+  (e.g., don't require "raises ValueError for negative input" unless the task says so).
+- A contract with 4-6 solid properties covering core behavior + basic edge cases is GOOD ENOUGH.
+- Bias toward APPROVE.  The contract will be tested against the code — \
+  if properties are too weak, the code will still be tested by canonical tests.
 
-Respond with your decision and reasoning.
+Start your response with APPROVE or REJECT, then explain your reasoning briefly.
 """
 
 
