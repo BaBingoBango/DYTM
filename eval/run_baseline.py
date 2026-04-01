@@ -5,7 +5,7 @@ the generated code against the benchmark's canonical test suite.
 Logs results to CSV.
 
 Usage:
-    python -m eval.run_baseline [--limit N] [--model MODEL]
+    python -m eval.run_baseline [--limit N] [--model MODEL] [--workers N]
 """
 
 from __future__ import annotations
@@ -16,7 +16,9 @@ import os
 import subprocess
 import sys
 import tempfile
+import threading
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -70,10 +72,68 @@ def _run_canonical_tests(code: str, problem: dict, timeout: int = 30) -> bool:
             return False
 
 
+_print_lock = threading.Lock()
+
+
+def _run_one_baseline(
+    problem: dict,
+    model,
+    model_name: str,
+    index: int,
+    total: int,
+) -> dict:
+    """Run baseline on a single problem. Thread-safe."""
+    task_id = problem["task_id"]
+    prompt = problem["prompt"]
+
+    start = time.time()
+    failure_reason = None
+
+    try:
+        messages = [
+            SystemMessage(content=BASELINE_SYSTEM_PROMPT),
+            HumanMessage(content=f"Complete this function:\n\n{prompt}"),
+        ]
+        response = model.invoke(messages)
+        generated_code = response.content
+
+        # Strip markdown fences if present
+        if "```python" in generated_code:
+            generated_code = generated_code.split("```python", 1)[1]
+            generated_code = generated_code.split("```", 1)[0]
+        elif "```" in generated_code:
+            generated_code = generated_code.split("```", 1)[1]
+            generated_code = generated_code.split("```", 1)[0]
+
+        passed = _run_canonical_tests(generated_code, problem)
+        if not passed:
+            failure_reason = "canonical_tests_failed"
+
+    except Exception as exc:
+        passed = False
+        failure_reason = str(exc)[:200]
+
+    elapsed = time.time() - start
+    status = "PASS" if passed else "FAIL"
+
+    with _print_lock:
+        print(f"[{index+1}/{total}] {task_id} ... {status} ({elapsed:.1f}s)")
+
+    return {
+        "problem_id": task_id,
+        "model": model_name,
+        "mode": "baseline",
+        "passed": passed,
+        "wall_clock_sec": round(elapsed, 2),
+        "failure_reason": failure_reason,
+    }
+
+
 def run_baseline(
     model_name: str = "gpt-4o-mini",
     limit: int | None = None,
     offset: int = 0,
+    workers: int = 1,
 ) -> Path:
     """Run the baseline eval and write results to CSV.
 
@@ -88,60 +148,35 @@ def run_baseline(
         "wall_clock_sec", "failure_reason",
     ]
 
+    problems = list(load_humaneval(limit=limit, offset=offset))
+    total = len(problems)
+
+    if workers > 1:
+        print(f"Running baseline with {workers} parallel workers...")
+
+    results: list[dict] = []
+
+    if workers > 1:
+        with ThreadPoolExecutor(max_workers=workers) as executor:
+            futures = {
+                executor.submit(
+                    _run_one_baseline, problem, model, model_name, i, total,
+                ): i
+                for i, problem in enumerate(problems)
+            }
+            for future in as_completed(futures):
+                results.append(future.result())
+        results.sort(key=lambda r: r["problem_id"])
+    else:
+        for i, problem in enumerate(problems):
+            results.append(_run_one_baseline(problem, model, model_name, i, total))
+
     with open(csv_path, "w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=fieldnames)
         writer.writeheader()
+        for r in results:
+            writer.writerow(r)
 
-        problems = list(load_humaneval(limit=limit, offset=offset))
-        total = len(problems)
-
-        for i, problem in enumerate(problems):
-            task_id = problem["task_id"]
-            prompt = problem["prompt"]
-            print(f"[{i+1}/{total}] {task_id} ... ", end="", flush=True)
-
-            start = time.time()
-            failure_reason = None
-
-            try:
-                messages = [
-                    SystemMessage(content=BASELINE_SYSTEM_PROMPT),
-                    HumanMessage(content=f"Complete this function:\n\n{prompt}"),
-                ]
-                response = model.invoke(messages)
-                generated_code = response.content
-
-                # Strip markdown fences if present
-                if "```python" in generated_code:
-                    generated_code = generated_code.split("```python", 1)[1]
-                    generated_code = generated_code.split("```", 1)[0]
-                elif "```" in generated_code:
-                    generated_code = generated_code.split("```", 1)[1]
-                    generated_code = generated_code.split("```", 1)[0]
-
-                passed = _run_canonical_tests(generated_code, problem)
-                if not passed:
-                    failure_reason = "canonical_tests_failed"
-
-            except Exception as exc:
-                passed = False
-                failure_reason = str(exc)[:200]
-
-            elapsed = time.time() - start
-            status = "PASS" if passed else "FAIL"
-            print(f"{status} ({elapsed:.1f}s)")
-
-            writer.writerow({
-                "problem_id": task_id,
-                "model": model_name,
-                "mode": "baseline",
-                "passed": passed,
-                "wall_clock_sec": round(elapsed, 2),
-                "failure_reason": failure_reason,
-            })
-            f.flush()
-
-    # Print summary
     _print_summary(csv_path)
     return csv_path
 
@@ -162,13 +197,16 @@ def main():
     parser.add_argument("--limit", type=int, default=None)
     parser.add_argument("--offset", type=int, default=0)
     parser.add_argument("--model", type=str, default="gpt-4o-mini")
+    parser.add_argument("--workers", "-w", type=int, default=1,
+                        help="Number of parallel workers (default: 1 = serial)")
     args = parser.parse_args()
 
     if not os.environ.get("OPENAI_API_KEY"):
         print("ERROR: OPENAI_API_KEY not set.")
         sys.exit(1)
 
-    run_baseline(model_name=args.model, limit=args.limit, offset=args.offset)
+    run_baseline(model_name=args.model, limit=args.limit, offset=args.offset,
+                 workers=args.workers)
 
 
 if __name__ == "__main__":

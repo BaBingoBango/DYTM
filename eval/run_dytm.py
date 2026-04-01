@@ -8,7 +8,7 @@ Now with **real-time observability**: streams graph execution node-by-node
 so you can see exactly what the system is doing at each step.
 
 Usage:
-    python -m eval.run_dytm [--limit N] [--model MODEL] [--verbose]
+    python -m eval.run_dytm [--limit N] [--model MODEL] [--verbose] [--workers N]
 """
 
 from __future__ import annotations
@@ -20,7 +20,9 @@ import signal
 import subprocess
 import sys
 import tempfile
+import threading
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -41,6 +43,9 @@ from eval.loader import build_canonical_test_code, load_humaneval
 console = Console()
 RESULTS_DIR = Path(__file__).resolve().parent / "results"
 RESULTS_DIR.mkdir(exist_ok=True)
+
+# Thread lock for console + CSV writes in parallel mode
+_print_lock = threading.Lock()
 
 # ---------------------------------------------------------------------------
 # Colour / icon helpers
@@ -291,7 +296,151 @@ _NODE_LOGGERS = {
 
 
 # ---------------------------------------------------------------------------
-# Main eval runner — now with streaming & observability
+# Single-problem runner (extracted for parallel use)
+# ---------------------------------------------------------------------------
+
+def _run_one_problem(
+    problem: dict,
+    app,
+    max_retries: int,
+    max_spec_retries: int,
+    problem_timeout: int,
+    verbose: bool,
+    parallel: bool,
+    index: int,
+    total: int,
+) -> dict:
+    """Run DYTM on a single problem and return a result dict.
+
+    In serial mode (parallel=False), prints rich output as it goes.
+    In parallel mode (parallel=True), buffers output and prints at the end.
+    """
+    task_id = problem["task_id"]
+    entry_point = problem["entry_point"]
+    prompt = problem["prompt"]
+
+    start = time.time()
+    failure_reason = None
+    pbt_passed = False
+    retries = 0
+    final_state: dict = {}
+    passed = False
+
+    try:
+        dytm_prompt = (
+            f"Complete this Python function. The function name MUST be "
+            f"'{entry_point}'.\n\n{prompt}"
+        )
+
+        initial_state = {
+            "prompt": dytm_prompt,
+            "mode": "eval",
+            "retry_count": 0,
+            "max_retries": max_retries,
+            "spec_retry_count": 0,
+            "max_spec_retries": max_spec_retries,
+        }
+
+        if not parallel:
+            # Serial mode — use SIGALRM timeout + rich streaming
+            console.rule(
+                f"[bold]{task_id}[/bold]  ({index+1}/{total})  fn={entry_point}",
+                style="blue",
+            )
+
+            def _timeout_handler(signum, frame):
+                raise TimeoutError(f"Problem timed out after {problem_timeout}s")
+            old_handler = signal.signal(signal.SIGALRM, _timeout_handler)
+            signal.alarm(problem_timeout)
+
+            try:
+                node_start = time.time()
+                for step in app.stream(initial_state, stream_mode="updates"):
+                    for node_name, state_update in step.items():
+                        node_elapsed_ms = int((time.time() - node_start) * 1000)
+                        final_state.update(state_update)
+                        logger = _NODE_LOGGERS.get(node_name)
+                        if logger:
+                            logger(final_state, node_elapsed_ms, verbose)
+                        else:
+                            console.print(f"  [dim]▸ {node_name} ({node_elapsed_ms}ms)[/dim]")
+                        node_start = time.time()
+            finally:
+                signal.alarm(0)
+                signal.signal(signal.SIGALRM, old_handler)
+        else:
+            # Parallel mode — no SIGALRM, no streaming, just invoke
+            for step in app.stream(initial_state, stream_mode="updates"):
+                for node_name, state_update in step.items():
+                    final_state.update(state_update)
+
+        code = final_state.get("code", "")
+        pbt_passed = final_state.get("test_result") == "pass"
+        retries = final_state.get("retry_count", 0)
+
+        # Canonical tests
+        passed, canon_detail = _run_canonical_tests(code, problem)
+
+        if not parallel:
+            canon_tag = "[green]PASS[/green]" if passed else "[red]FAIL[/red]"
+            console.print(f"  [bold]📊 CANONICAL[/bold] → {canon_tag}")
+            if verbose and not passed and canon_detail:
+                console.print(Panel(
+                    canon_detail[:1000],
+                    title="[dim]Canonical Test Error[/dim]",
+                    border_style="dim red",
+                    expand=False,
+                    padding=(0, 1),
+                ))
+
+        if not passed:
+            failure_reason = "canonical_tests_failed"
+            if not pbt_passed:
+                failure_reason = "pbt_and_canonical_failed"
+
+    except Exception as exc:
+        passed = False
+        failure_reason = str(exc)[:200]
+        if not parallel:
+            console.print(f"  [bold red]💥 EXCEPTION:[/bold red] {failure_reason}")
+
+    elapsed = time.time() - start
+
+    result = {
+        "problem_id": task_id,
+        "model": "",  # filled by caller
+        "mode": "dytm",
+        "passed": passed,
+        "pbt_passed": pbt_passed,
+        "retries": retries,
+        "wall_clock_sec": round(elapsed, 2),
+        "failure_reason": failure_reason,
+    }
+
+    if parallel:
+        pbt_tag = "PBT:OK" if pbt_passed else "PBT:FAIL"
+        status = "PASS ✓" if passed else "FAIL ✗"
+        with _print_lock:
+            console.print(
+                f"  [{index+1:>3}/{total}] {task_id:<25s} "
+                f"{'[green]' + status + '[/green]' if passed else '[red]' + status + '[/red]'}  "
+                f"{pbt_tag}  retries={retries}  {elapsed:.1f}s"
+            )
+    else:
+        pbt_tag = "[green]PBT:OK[/green]" if pbt_passed else "[red]PBT:FAIL[/red]"
+        result_tag = "[bold green]PASS[/bold green]" if passed else "[bold red]FAIL[/bold red]"
+        running_pct = ""  # can't compute running totals here in extracted fn
+        console.print(
+            f"  [bold]→ {result_tag}  {pbt_tag}  "
+            f"retries={retries}  {elapsed:.1f}s[/bold]"
+        )
+        console.print()
+
+    return result
+
+
+# ---------------------------------------------------------------------------
+# Main eval runner
 # ---------------------------------------------------------------------------
 
 def run_dytm(
@@ -303,11 +452,11 @@ def run_dytm(
     max_spec_retries: int = 2,
     problem_timeout: int = 180,
     verbose: bool = False,
+    workers: int = 1,
 ) -> Path:
     """Run the DYTM eval and write results to CSV."""
     model = ChatOpenAI(model=model_name, temperature=0, timeout=90, max_retries=2)
 
-    # Executive LLM for contract approval (separate model, fresh context)
     executive_model = None
     if executive_model_name:
         executive_model = ChatOpenAI(
@@ -329,10 +478,15 @@ def run_dytm(
     problems = list(load_humaneval(limit=limit, offset=offset))
     total = len(problems)
 
+    parallel = workers > 1
+    if parallel and verbose:
+        console.print("[yellow]⚠ Verbose mode disabled for parallel execution.[/yellow]")
+        verbose = False
+
     console.print()
     console.print(Panel(
         f"[bold cyan]DYTM Eval (v2)[/bold cyan]  |  model={model_name}  "
-        f"executive={exec_tag}\n"
+        f"executive={exec_tag}  workers={workers}\n"
         f"problems={total}  max_retries={max_retries}  "
         f"max_spec_retries={max_spec_retries}  "
         f"timeout={problem_timeout}s  verbose={'on' if verbose else 'off'}",
@@ -340,136 +494,43 @@ def run_dytm(
     ))
     console.print()
 
-    pass_count = 0
-    pbt_pass_count = 0
+    results: list[dict] = []
 
+    if parallel:
+        # --- Parallel execution ---
+        with ThreadPoolExecutor(max_workers=workers) as executor:
+            futures = {
+                executor.submit(
+                    _run_one_problem,
+                    problem, app, max_retries, max_spec_retries,
+                    problem_timeout, verbose, True, i, total,
+                ): (i, problem)
+                for i, problem in enumerate(problems)
+            }
+            for future in as_completed(futures):
+                result = future.result()
+                result["model"] = model_name
+                results.append(result)
+
+        # Sort by problem_id for consistent CSV ordering
+        results.sort(key=lambda r: r["problem_id"])
+
+    else:
+        # --- Serial execution (original behavior) ---
+        for i, problem in enumerate(problems):
+            result = _run_one_problem(
+                problem, app, max_retries, max_spec_retries,
+                problem_timeout, verbose, False, i, total,
+            )
+            result["model"] = model_name
+            results.append(result)
+
+    # Write CSV
     with open(csv_path, "w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=fieldnames)
         writer.writeheader()
-
-        for i, problem in enumerate(problems):
-            task_id = problem["task_id"]
-            prompt = problem["prompt"]
-            entry_point = problem["entry_point"]
-
-            # Header for this problem
-            console.rule(
-                f"[bold]{task_id}[/bold]  ({i+1}/{total})  "
-                f"fn={entry_point}",
-                style="blue",
-            )
-
-            start = time.time()
-            failure_reason = None
-            pbt_passed = False
-            retries = 0
-            final_state: dict = {}
-
-            try:
-                dytm_prompt = (
-                    f"Complete this Python function. The function name MUST be "
-                    f"'{entry_point}'.\n\n{prompt}"
-                )
-
-                initial_state = {
-                    "prompt": dytm_prompt,
-                    "mode": "eval",
-                    "retry_count": 0,
-                    "max_retries": max_retries,
-                    "spec_retry_count": 0,
-                    "max_spec_retries": max_spec_retries,
-                }
-
-                # Timeout per problem
-                def _timeout_handler(signum, frame):
-                    raise TimeoutError(f"Problem timed out after {problem_timeout}s")
-                old_handler = signal.signal(signal.SIGALRM, _timeout_handler)
-                signal.alarm(problem_timeout)
-
-                try:
-                    # ---- STREAM instead of invoke ----
-                    node_start = time.time()
-                    for step in app.stream(initial_state, stream_mode="updates"):
-                        # step is {node_name: state_update}
-                        for node_name, state_update in step.items():
-                            node_elapsed_ms = int((time.time() - node_start) * 1000)
-                            final_state.update(state_update)
-
-                            # Log this node
-                            logger = _NODE_LOGGERS.get(node_name)
-                            if logger:
-                                logger(final_state, node_elapsed_ms, verbose)
-                            else:
-                                console.print(f"  [dim]▸ {node_name} ({node_elapsed_ms}ms)[/dim]")
-
-                            node_start = time.time()
-                finally:
-                    signal.alarm(0)
-                    signal.signal(signal.SIGALRM, old_handler)
-
-                code = final_state.get("code", "")
-                pbt_passed = final_state.get("test_result") == "pass"
-                retries = final_state.get("retry_count", 0)
-
-                # Run canonical tests (ground truth)
-                canon_start = time.time()
-                passed, canon_detail = _run_canonical_tests(code, problem)
-                canon_ms = int((time.time() - canon_start) * 1000)
-                canon_tag = "[green]PASS[/green]" if passed else "[red]FAIL[/red]"
-                console.print(
-                    f"  [bold]📊 CANONICAL[/bold] → {canon_tag}  [dim]{canon_ms}ms[/dim]"
-                )
-
-                if verbose and not passed and canon_detail:
-                    # Show the last few lines of the canonical failure
-                    console.print(Panel(
-                        canon_detail[:1000],
-                        title="[dim]Canonical Test Error[/dim]",
-                        border_style="dim red",
-                        expand=False,
-                        padding=(0, 1),
-                    ))
-
-                if not passed:
-                    failure_reason = "canonical_tests_failed"
-                    if not pbt_passed:
-                        failure_reason = "pbt_and_canonical_failed"
-
-            except Exception as exc:
-                passed = False
-                failure_reason = str(exc)[:200]
-                console.print(f"  [bold red]💥 EXCEPTION:[/bold red] {failure_reason}")
-
-            elapsed = time.time() - start
-
-            # Summary line
-            if passed:
-                pass_count += 1
-            if pbt_passed:
-                pbt_pass_count += 1
-
-            pbt_tag = "[green]PBT:OK[/green]" if pbt_passed else "[red]PBT:FAIL[/red]"
-            result_tag = "[bold green]PASS[/bold green]" if passed else "[bold red]FAIL[/bold red]"
-            running_pct = pass_count / (i + 1) * 100
-
-            console.print(
-                f"  [bold]→ {result_tag}  {pbt_tag}  "
-                f"retries={retries}  {elapsed:.1f}s  "
-                f"running={pass_count}/{i+1} ({running_pct:.0f}%)[/bold]"
-            )
-            console.print()
-
-            writer.writerow({
-                "problem_id": task_id,
-                "model": model_name,
-                "mode": "dytm",
-                "passed": passed,
-                "pbt_passed": pbt_passed,
-                "retries": retries,
-                "wall_clock_sec": round(elapsed, 2),
-                "failure_reason": failure_reason,
-            })
-            f.flush()
+        for r in results:
+            writer.writerow(r)
 
     _print_summary(csv_path)
     return csv_path
@@ -527,6 +588,8 @@ def main():
                              "If not set, contracts are auto-approved.")
     parser.add_argument("--verbose", "-v", action="store_true",
                         help="Show generated code, CNL contracts, and error traces")
+    parser.add_argument("--workers", "-w", type=int, default=1,
+                        help="Number of parallel workers (default: 1 = serial)")
     args = parser.parse_args()
 
     if not os.environ.get("OPENAI_API_KEY"):
@@ -541,6 +604,7 @@ def main():
         max_retries=args.max_retries,
         max_spec_retries=args.max_spec_retries,
         verbose=args.verbose,
+        workers=args.workers,
     )
 
 
