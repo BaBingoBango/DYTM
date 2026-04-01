@@ -40,7 +40,7 @@ def _clean_expected(value: str) -> str:
     cleaned = re.sub(r'\s*[}\]]\s*,?\s*[{\[]\s*', '', cleaned)
     # Remove lone trailing }, {, ], [
     cleaned = re.sub(r'\s*[}\]{[\[,]+\s*\.?\s*$', '', cleaned)
-    return cleaned.strip().rstrip('.,') + '.' if cleaned else value
+    return cleaned.strip().rstrip('.') + '.' if cleaned else value
 
 
 # ---------------------------------------------------------------------------
