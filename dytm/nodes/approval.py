@@ -33,8 +33,9 @@ of the given task will pass, and that an incorrect implementation will fail.
 
 You will receive:
 1. The original task description
-2. The CNL verification contract (a human-readable list of properties)
-3. The PBT test code (the actual Python tests that will run against the implementation)
+2. The CNL verification contract — a human-readable list of properties, \
+each followed by its TEST IMPLEMENTATION (the actual Python test code \
+that will run against the implementation)
 
 You must decide: APPROVE or REJECT.
 
@@ -44,7 +45,7 @@ APPROVE if:
 - The invariants/properties would meaningfully distinguish correct from incorrect implementations
 - The return type is specified
 - The edge case expected values are mathematically correct (see below)
-- The test code correctly implements the specification (see below)
+- The test implementations correctly match their property descriptions (see below)
 
 REJECT only if:
 - The contract is fundamentally wrong (contradicts the task)
@@ -52,7 +53,7 @@ REJECT only if:
 - The contract tests something completely different from what the task asks
 - Critical core behavior is missing entirely (not just missing obscure edge cases)
 - One or more edge case expected values are MATHEMATICALLY WRONG
-- The test code has a boundary bug (e.g. uses <= when the task says "less than", which requires <)
+- A test implementation contradicts its property description or has a boundary bug
 
 IMPORTANT guidelines:
 - Do NOT reject just because some edge cases are missing — no contract is perfect.
@@ -74,17 +75,16 @@ Examples of mistakes to catch:
 If ANY edge case expected value is wrong, REJECT and specify which edge \
 case is incorrect and what the correct value should be.
 
-CRITICAL — VERIFY TEST CODE:
-You will also see the actual Python test code (PBT test implementations).  \
-Check that:
+CRITICAL — VERIFY TEST IMPLEMENTATIONS:
+Each property in the contract includes a TEST IMPLEMENTATION section \
+showing the actual Python code that will run.  Check that:
 1. Boundary conditions match the task wording: "closer than X" must use `<`, \
 NOT `<=`.  "at most X" must use `<=`, NOT `<`.
 2. Hypothesis strategies generate VALID inputs for the function (e.g. not \
 `st.text()` for a function that only accepts parentheses).
-3. The test assertions are logically consistent with the CNL specification.
-4. No test property contradicts another (e.g. invariant says "works on any \
-string" but edge case says "raises ValueError for some strings").
-If the test code has bugs, REJECT and specify what's wrong.
+3. The test assertions are logically consistent with the property description above them.
+4. No test property contradicts another.
+If a test implementation has bugs, REJECT and specify what's wrong.
 
 Start your response with APPROVE or REJECT, then explain your reasoning briefly.
 """
@@ -163,50 +163,15 @@ def _executive_llm_approval(state: DYTMState, model: BaseChatModel | None) -> di
 
     cnl_text = state.get("cnl_text", "(no contract)")
     prompt = state.get("prompt", "(no task)")
-    pbt = state.get("pbt_payload", {})
 
-    # Extract edge cases for explicit math verification
-    edge_case_lines: list[str] = []
-    for prop in pbt.get("properties", []):
-        if prop.get("type") == "edge_case":
-            inp = prop.get("input", "?")
-            behavior = prop.get("expected_behavior", prop.get("expected", "?"))
-            edge_case_lines.append(f"  • input={inp} → {behavior}")
-
-    edge_case_section = ""
-    if edge_case_lines:
-        edge_case_section = (
-            "\n\nEDGE CASES TO VERIFY (compute each expected value step by step):\n"
-            + "\n".join(edge_case_lines)
-        )
-
-    # Extract test_body code for properties that have it (invariant, membership, output_type)
-    # so the Executive can verify the implementation matches the CNL spec.
-    test_body_lines: list[str] = []
-    for prop in pbt.get("properties", []):
-        test_body = prop.get("test_body")
-        if test_body and prop.get("type") in ("invariant", "membership", "output_type"):
-            ptype = prop.get("type", "?")
-            name = prop.get("name", "?")
-            test_body_lines.append(
-                f"--- {ptype}: {name} ---\n{test_body.strip()}"
-            )
-
-    test_code_section = ""
-    if test_body_lines:
-        test_code_section = (
-            "\n\nPBT TEST CODE (verify these match the specification above — "
-            "check boundary conditions like < vs <=):\n"
-            + "\n\n".join(test_body_lines)
-        )
-
+    # The CNL is now lossless — it includes both human-readable property
+    # descriptions AND the executable test implementations rendered by the
+    # Translator.  The Executive reviews a single, deterministic document.
     messages = [
         SystemMessage(content=EXECUTIVE_SYSTEM_PROMPT),
         HumanMessage(content=(
             f"TASK:\n{prompt}\n\n"
-            f"VERIFICATION CONTRACT:\n{cnl_text}"
-            f"{edge_case_section}"
-            f"{test_code_section}\n\n"
+            f"VERIFICATION CONTRACT:\n{cnl_text}\n\n"
             f"Should this contract be APPROVED or REJECTED?  "
             f"Start your response with APPROVE or REJECT, then explain."
         )),

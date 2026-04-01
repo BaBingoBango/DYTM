@@ -10,4 +10,8 @@ VERIFICATION CONTRACT — {{ function_name }}
 {% elif prop.type == "edge_case" %}
 {{ loop.index }}. EDGE CASE: When given {{ prop.input | default("the specified input", true) }}, the function MUST {{ prop.expected_behavior | default(prop.expected, true) }}.
 {% endif %}
+{% if prop.test_body %}
+   TEST IMPLEMENTATION:
+   {{ prop.test_body | replace('\n', '\n   ') }}
+{% endif %}
 {% endfor %}

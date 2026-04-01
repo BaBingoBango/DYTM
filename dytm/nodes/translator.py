@@ -3,8 +3,11 @@
 This node contains **zero LLM calls**.  It loads a Jinja2 template and
 renders the structured PBT payload into a human-readable Controlled Natural
 Language (CNL) contract.  Because the mapping is purely template-based, the
-CNL is a mathematically faithful description of the PBTs that will actually
-run.
+CNL is a mathematically faithful, **lossless** description of the PBTs that
+will actually run — including both the human-readable property descriptions
+and the executable test implementations.
+
+The CNL is the single document the Executive reviews.  Nothing is hidden.
 """
 
 from __future__ import annotations
