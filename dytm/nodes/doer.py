@@ -58,6 +58,10 @@ def _compile_test_file(code: str, pbt: dict) -> str:
     header = (
         "# --- Auto-generated DYTM test file ---\n"
         "import pytest\n"
+        "from typing import *\n"
+        "from collections import *\n"
+        "import math\n"
+        "import re\n"
         "from hypothesis import given, settings, HealthCheck\n"
         "from hypothesis import strategies as st\n"
         "\n"
