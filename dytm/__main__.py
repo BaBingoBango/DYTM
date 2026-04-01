@@ -80,5 +80,9 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    if len(sys.argv) > 1 and sys.argv[1] == "free":
+        from dytm.free import main as free_main
+        free_main()
+    else:
+        main()
 
