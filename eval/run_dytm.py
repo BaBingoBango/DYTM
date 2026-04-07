@@ -469,6 +469,7 @@ def run_dytm(
     verbose: bool = False,
     workers: int = 1,
     multi_spec_k: int = 1,
+    det_multi_spec_k: int = 0,
 ) -> Path:
     """Run the DYTM eval and write results to CSV."""
     model = ChatOpenAI(model=model_name, temperature=0, timeout=90, max_retries=2)
@@ -490,15 +491,20 @@ def run_dytm(
         executive_model=executive_model,
         spec_model=spec_model,
         multi_spec_k=multi_spec_k,
+        det_multi_spec_k=det_multi_spec_k,
     )
 
     exec_tag = executive_model_name or "auto-approve"
     spec_tag = spec_model_name or model_name
     ms_tag = f"  multi_spec_k={multi_spec_k}" if multi_spec_k > 1 else ""
+    if det_multi_spec_k > 0:
+        ms_tag = f"  det_multi_spec_k={det_multi_spec_k}"
 
     timestamp = time.strftime("%Y%m%d_%H%M%S")
     # Include spec model in filename when it differs from coder model
-    if multi_spec_k > 1:
+    if det_multi_spec_k > 0:
+        csv_path = RESULTS_DIR / f"dytm_det-multispec-{det_multi_spec_k}_{model_name}_{timestamp}.csv"
+    elif multi_spec_k > 1:
         csv_path = RESULTS_DIR / f"dytm_multispec-{multi_spec_k}_{model_name}_{timestamp}.csv"
     elif spec_model_name and spec_model_name != model_name:
         csv_path = RESULTS_DIR / f"dytm_spec-{spec_model_name}_coder-{model_name}_{timestamp}.csv"
@@ -634,6 +640,10 @@ def main():
     parser.add_argument("--multi-spec", type=int, default=1, metavar="K",
                         help="Number of spec interpretations to sample (default: 1 = single spec). "
                              "Use K=3 for multi-interpretation mode with temperature diversity.")
+    parser.add_argument("--det-multi-spec", type=int, default=0, metavar="K",
+                        help="Number of spec interpretations via DETERMINISTIC ambiguity "
+                             "detection (regex taxonomy, no LLM for analysis). "
+                             "Overrides --multi-spec if > 0.")
     args = parser.parse_args()
 
     if not os.environ.get("OPENAI_API_KEY"):
@@ -651,6 +661,7 @@ def main():
         verbose=args.verbose,
         workers=args.workers,
         multi_spec_k=args.multi_spec,
+        det_multi_spec_k=args.det_multi_spec,
     )
 
 

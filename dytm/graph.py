@@ -21,6 +21,7 @@ from langgraph.graph.state import CompiledStateGraph
 
 from dytm.nodes.approval import make_approval_node
 from dytm.nodes.coder import make_coder_node
+from dytm.nodes.deterministic_multi_spec import make_deterministic_multi_spec_node
 from dytm.nodes.doer import doer_node
 from dytm.nodes.multi_spec import make_multi_spec_node
 from dytm.nodes.spec import make_spec_node
@@ -75,6 +76,7 @@ def build_graph(
     executive_model: BaseChatModel | None = None,
     spec_model: BaseChatModel | None = None,
     multi_spec_k: int = 1,
+    det_multi_spec_k: int = 0,
 ) -> CompiledStateGraph:
     """Build and compile the DYTM verification loop (v2).
 
@@ -90,12 +92,20 @@ def build_graph(
         multi_spec_k: Number of spec interpretations to sample.  If > 1,
                       uses the Multi-Spec node (temperature diversity +
                       example-consistency filtering) instead of single Spec.
+        det_multi_spec_k: Number of spec interpretations via DETERMINISTIC
+                          ambiguity detection (regex taxonomy).  If > 0,
+                          overrides multi_spec_k.  Uses no LLM for ambiguity
+                          analysis — only regex pattern matching.
 
     Returns:
         A compiled LangGraph ``StateGraph`` ready to be invoked.
     """
     base_spec_model = spec_model or model
-    if multi_spec_k > 1:
+    if det_multi_spec_k > 0:
+        spec_node = make_deterministic_multi_spec_node(
+            base_spec_model, k=det_multi_spec_k,
+        )
+    elif multi_spec_k > 1:
         spec_node = make_multi_spec_node(base_spec_model, k=multi_spec_k)
     else:
         spec_node = make_spec_node(base_spec_model)
