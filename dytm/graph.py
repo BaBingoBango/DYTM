@@ -22,6 +22,7 @@ from langgraph.graph.state import CompiledStateGraph
 from dytm.nodes.approval import make_approval_node
 from dytm.nodes.coder import make_coder_node
 from dytm.nodes.doer import doer_node
+from dytm.nodes.multi_spec import make_multi_spec_node
 from dytm.nodes.spec import make_spec_node
 from dytm.nodes.translator import translator_node
 from dytm.state import DYTMState
@@ -72,18 +73,32 @@ def _route_after_doer(state: DYTMState) -> str:
 def build_graph(
     model: BaseChatModel,
     executive_model: BaseChatModel | None = None,
+    spec_model: BaseChatModel | None = None,
+    multi_spec_k: int = 1,
 ) -> CompiledStateGraph:
     """Build and compile the DYTM verification loop (v2).
 
     Args:
-        model: LLM for Spec + Coder nodes.
+        model: Default LLM for Spec + Coder nodes.
         executive_model: Optional separate LLM for the Executive approval.
                          If None, eval mode auto-approves.
+        spec_model: Optional separate LLM for the Spec node only.
+                    If provided, Spec uses this model while Coder uses
+                    ``model``.  This enables cross-model experiments
+                    (e.g. strong Spec → weak Coder) to test whether DYTM
+                    adds value beyond simply upgrading the model.
+        multi_spec_k: Number of spec interpretations to sample.  If > 1,
+                      uses the Multi-Spec node (temperature diversity +
+                      example-consistency filtering) instead of single Spec.
 
     Returns:
         A compiled LangGraph ``StateGraph`` ready to be invoked.
     """
-    spec_node = make_spec_node(model)
+    base_spec_model = spec_model or model
+    if multi_spec_k > 1:
+        spec_node = make_multi_spec_node(base_spec_model, k=multi_spec_k)
+    else:
+        spec_node = make_spec_node(base_spec_model)
     coder_node_fn = make_coder_node(model)
     approval_node = make_approval_node(executive_model)
 

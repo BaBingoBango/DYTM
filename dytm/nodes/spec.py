@@ -200,6 +200,10 @@ def make_spec_node(model: BaseChatModel):
 
         On first run, sends only the task prompt.  If the Executive LLM
         rejected the previous contract, appends the rejection feedback.
+
+        If the LLM call fails (API error, structured output parse error),
+        returns a minimal fallback PBT payload so the graph continues
+        rather than crashing.
         """
         messages = [SystemMessage(content=SPEC_SYSTEM_PROMPT)]
 
@@ -219,7 +223,31 @@ def make_spec_node(model: BaseChatModel):
 
         messages.append(HumanMessage(content=user_content))
 
-        result: SpecOutput = structured_model.invoke(messages)
+        try:
+            result: SpecOutput = structured_model.invoke(messages)
+        except Exception as exc:
+            # LLM call failed — return a minimal fallback PBT so the graph
+            # can continue (the Doer will fail, triggering a retry).
+            # Extract a function name from the prompt as best-effort.
+            fallback_name = "unknown_function"
+            for word in prompt.split():
+                if word.isidentifier() and word not in ("def", "the", "a", "an", "is", "if"):
+                    fallback_name = word
+                    break
+            return {
+                "pbt_payload": {
+                    "function_name": fallback_name,
+                    "properties": [
+                        {
+                            "name": "spec_generation_failed",
+                            "type": "edge_case",
+                            "expected": f"Spec LLM error: {str(exc)[:200]}",
+                            "input": "None",
+                            "expected_behavior": "raises RuntimeError",
+                        }
+                    ],
+                },
+            }
 
         return {
             "pbt_payload": result.pbt.model_dump(),

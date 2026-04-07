@@ -70,6 +70,10 @@ def make_coder_node(model: BaseChatModel):
 
         Always starts from a FRESH context — no memory of the spec
         generation step.  On retries, includes the error trace.
+
+        If the LLM call fails (API error, structured output parse error),
+        returns placeholder code that will fail the Doer's tests, feeding
+        back into the retry loop instead of crashing the graph.
         """
         messages = [SystemMessage(content=CODER_SYSTEM_PROMPT)]
 
@@ -125,7 +129,17 @@ def make_coder_node(model: BaseChatModel):
 
         messages.append(HumanMessage(content=user_content))
 
-        result: CoderOutput = structured_model.invoke(messages)
+        try:
+            result: CoderOutput = structured_model.invoke(messages)
+        except Exception as exc:
+            # LLM call failed — return placeholder code that will fail tests,
+            # feeding back into the retry loop via the Doer.
+            return {
+                "code": (
+                    f"def {func_name}(*args, **kwargs):\n"
+                    f"    raise RuntimeError('Coder LLM call failed: {str(exc)[:100]}')\n"
+                ),
+            }
 
         return {
             "code": result.code,

@@ -113,9 +113,22 @@ def _show_spec_output(state: dict, elapsed_ms: int, verbose: bool) -> None:
     prop_types = [p.get("type", "?") for p in pbt.get("properties", [])]
     type_summary = ", ".join(f"{t}×{prop_types.count(t)}" for t in dict.fromkeys(prop_types))
 
+    # Multi-spec info
+    ms_candidates = state.get("_multi_spec_candidates")
+    ms_consistent = state.get("_multi_spec_consistent")
+    ms_mode = state.get("_multi_spec_mode", "")
+    ms_tag = ""
+    if ms_candidates is not None:
+        ms_diff = state.get("_multi_spec_difficulty", "?")
+        ms_axes = state.get("_multi_spec_ambiguities", 0)
+        ms_tag = (
+            f"  [dim yellow]multi-spec({ms_mode}, {ms_diff}, {ms_axes}axes): "
+            f"{ms_consistent}/{ms_candidates} consistent[/dim yellow]"
+        )
+
     console.print(
         f"  {_node_tag('spec')} → fn=[bold]{func_name}[/bold]  "
-        f"props={n_props} ({type_summary})  "
+        f"props={n_props} ({type_summary}){ms_tag}  "
         f"[dim]{elapsed_ms}ms[/dim]"
     )
 
@@ -409,6 +422,7 @@ def _run_one_problem(
     result = {
         "problem_id": task_id,
         "model": "",  # filled by caller
+        "spec_model": "",  # filled by caller
         "mode": "dytm",
         "passed": passed,
         "pbt_passed": pbt_passed,
@@ -446,6 +460,7 @@ def _run_one_problem(
 def run_dytm(
     model_name: str = "gpt-4o-mini",
     executive_model_name: str | None = None,
+    spec_model_name: str | None = None,
     limit: int | None = None,
     offset: int = 0,
     max_retries: int = 4,
@@ -453,6 +468,7 @@ def run_dytm(
     problem_timeout: int = 180,
     verbose: bool = False,
     workers: int = 1,
+    multi_spec_k: int = 1,
 ) -> Path:
     """Run the DYTM eval and write results to CSV."""
     model = ChatOpenAI(model=model_name, temperature=0, timeout=90, max_retries=2)
@@ -463,15 +479,34 @@ def run_dytm(
             model=executive_model_name, temperature=0, timeout=60, max_retries=2,
         )
 
-    app = build_graph(model, executive_model=executive_model)
+    spec_model = None
+    if spec_model_name:
+        spec_model = ChatOpenAI(
+            model=spec_model_name, temperature=0, timeout=90, max_retries=2,
+        )
+
+    app = build_graph(
+        model,
+        executive_model=executive_model,
+        spec_model=spec_model,
+        multi_spec_k=multi_spec_k,
+    )
 
     exec_tag = executive_model_name or "auto-approve"
+    spec_tag = spec_model_name or model_name
+    ms_tag = f"  multi_spec_k={multi_spec_k}" if multi_spec_k > 1 else ""
 
     timestamp = time.strftime("%Y%m%d_%H%M%S")
-    csv_path = RESULTS_DIR / f"dytm_{model_name}_{timestamp}.csv"
+    # Include spec model in filename when it differs from coder model
+    if multi_spec_k > 1:
+        csv_path = RESULTS_DIR / f"dytm_multispec-{multi_spec_k}_{model_name}_{timestamp}.csv"
+    elif spec_model_name and spec_model_name != model_name:
+        csv_path = RESULTS_DIR / f"dytm_spec-{spec_model_name}_coder-{model_name}_{timestamp}.csv"
+    else:
+        csv_path = RESULTS_DIR / f"dytm_{model_name}_{timestamp}.csv"
 
     fieldnames = [
-        "problem_id", "model", "mode", "passed", "pbt_passed",
+        "problem_id", "model", "spec_model", "mode", "passed", "pbt_passed",
         "retries", "wall_clock_sec", "failure_reason",
     ]
 
@@ -485,8 +520,8 @@ def run_dytm(
 
     console.print()
     console.print(Panel(
-        f"[bold cyan]DYTM Eval (v2)[/bold cyan]  |  model={model_name}  "
-        f"executive={exec_tag}  workers={workers}\n"
+        f"[bold cyan]DYTM Eval (v2)[/bold cyan]  |  spec={spec_tag}  "
+        f"coder={model_name}  executive={exec_tag}  workers={workers}{ms_tag}\n"
         f"problems={total}  max_retries={max_retries}  "
         f"max_spec_retries={max_spec_retries}  "
         f"timeout={problem_timeout}s  verbose={'on' if verbose else 'off'}",
@@ -510,6 +545,7 @@ def run_dytm(
             for future in as_completed(futures):
                 result = future.result()
                 result["model"] = model_name
+                result["spec_model"] = spec_tag
                 results.append(result)
 
         # Sort by problem_id for consistent CSV ordering
@@ -523,6 +559,7 @@ def run_dytm(
                 problem_timeout, verbose, False, i, total,
             )
             result["model"] = model_name
+            result["spec_model"] = spec_tag
             results.append(result)
 
     # Write CSV
@@ -586,10 +623,17 @@ def main():
     parser.add_argument("--executive-model", type=str, default=None,
                         help="Model for Executive LLM approval (e.g. gpt-4o-mini). "
                              "If not set, contracts are auto-approved.")
+    parser.add_argument("--spec-model", type=str, default=None,
+                        help="Model for the Spec node only (e.g. gpt-4o). "
+                             "If not set, uses --model for both Spec and Coder. "
+                             "Use this for cross-model experiments.")
     parser.add_argument("--verbose", "-v", action="store_true",
                         help="Show generated code, CNL contracts, and error traces")
     parser.add_argument("--workers", "-w", type=int, default=1,
                         help="Number of parallel workers (default: 1 = serial)")
+    parser.add_argument("--multi-spec", type=int, default=1, metavar="K",
+                        help="Number of spec interpretations to sample (default: 1 = single spec). "
+                             "Use K=3 for multi-interpretation mode with temperature diversity.")
     args = parser.parse_args()
 
     if not os.environ.get("OPENAI_API_KEY"):
@@ -599,12 +643,14 @@ def main():
     run_dytm(
         model_name=args.model,
         executive_model_name=args.executive_model,
+        spec_model_name=args.spec_model,
         limit=args.limit,
         offset=args.offset,
         max_retries=args.max_retries,
         max_spec_retries=args.max_spec_retries,
         verbose=args.verbose,
         workers=args.workers,
+        multi_spec_k=args.multi_spec,
     )
 
 

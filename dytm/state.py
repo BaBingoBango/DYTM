@@ -67,3 +67,8 @@ class DYTMState(TypedDict, total=False):
     _edge_only_fail: Optional[bool]  # True when PBT fails only on edge cases (soft pass)
     _prev_code: Optional[str]  # previous code attempt (for duplicate detection)
     _duplicate_code: Optional[bool]  # True when Coder generated same code as prev attempt
+    _multi_spec_candidates: Optional[int]  # number of spec candidates generated (multi-spec)
+    _multi_spec_consistent: Optional[int]  # number of example-consistent candidates
+    _multi_spec_mode: Optional[str]  # "contrastive" or "temperature" (multi-spec strategy used)
+    _multi_spec_difficulty: Optional[str]  # analyst difficulty rating: simple/moderate/tricky
+    _multi_spec_ambiguities: Optional[int]  # number of ambiguity axes found
