@@ -11,7 +11,7 @@
 
 DYTM is a verification protocol for LLM code generation that interposes a *property-based test (PBT) contract* between a user's intent and the generated code. An LLM ("Spec") produces a structured PBT specification; a deterministic Jinja2 template engine renders it into Controlled Natural Language (CNL); an executive (human or LLM) approves the CNL; and a separate LLM ("Coder") writes code on a fresh context. The code is iteratively refined against Hypothesis PBTs until it passes or retries are exhausted.
 
-We evaluated DYTM on the full 164-problem HumanEval benchmark. The system achieves **87.2% pass@1** vs. **85.4% baseline** (+1.8%, net +3 problems), with the improvement coming entirely from the PBT retry loop — DYTM's *secondary* mechanism. The *primary* mechanism (human intent verification via CNL contracts) is fundamentally untestable on a static benchmark. We additionally conducted cross-model, multi-spec, deterministic ambiguity taxonomy, and **agent-to-agent (A2A)** experiments. The A2A experiment — the first to test DYTM's primary mechanism — reveals that PBT contracts are a **lossy translation** of natural-language intent, producing an average 0.90-point intent match regression vs. direct NL communication. This document reports all findings and proposes future directions.
+We evaluated DYTM on the full 164-problem HumanEval benchmark. The system achieves **87.2% pass@1** vs. **85.4% baseline** (+1.8%, net +3 problems), with the improvement coming entirely from the PBT retry loop — DYTM's *secondary* mechanism. The *primary* mechanism (human intent verification via CNL contracts) is fundamentally untestable on a static benchmark. We additionally conducted cross-model, multi-spec, deterministic ambiguity taxonomy, and **agent-to-agent (A2A)** experiments. The A2A experiment — the first to test DYTM's primary mechanism — reveals that PBT contracts are a **lossy translation** of natural-language intent, producing an average 0.90-point intent match regression vs. direct NL communication. A **hybrid** condition (DYTM pipeline + NL feedback) recovers 67% of this gap, confirming that PBTs and NL are complementary but that PBTs cannot replace NL as a communication medium. This document reports all findings.
 
 ---
 
@@ -241,18 +241,20 @@ The Planner judges final output against its private `intent_summary` on a 1–5 
 
 ### 7.3 Results
 
-| Metric | Baseline (NL) | DYTM v1 (broken) | DYTM v3 (final) |
+| Metric | Baseline (NL) | DYTM v3 | Hybrid |
 |---|---|---|---|
-| High match (≥4/5) | **31/50 (62%)** | 12/50 (24%) | 17/50 (34%) |
-| Avg intent match | **3.98/5** | 2.84/5 | 3.08/5 |
-| Drift detected | 24/50 (48%) | 44/50 (88%) | 37/50 (74%) |
-| Avg rounds | **3.20** | 5.98 | 5.08 |
-| First-attempt OK | 9/50 (18%) | 0/50 (0%) | 4/50 (8%) |
-| Improved / Regressed / Tied (vs baseline) | — | 4 / 34 / 12 | 3 / 26 / 21 |
+| High match (≥4/5) | **31/50 (62%)** | 17/50 (34%) | 27/50 (54%) |
+| Avg intent match | **3.98/5** | 3.08/5 | 3.68/5 |
+| Drift detected | 24/50 (48%) | 37/50 (74%) | 31/50 (62%) |
+| Avg rounds | **3.20** | 5.08 | 8.10 |
+| First-attempt OK | 9/50 (18%) | 4/50 (8%) | 4/50 (8%) |
+| Improved / Regressed / Tied (vs baseline) | — | 3 / 26 / 21 | 7 / 17 / 26 |
 
-**Rejection distribution** (DYTM v3): 4 tasks with 0 rejections, 26 with 1, 5 with 2, 15 with 3+. The protocol is mechanically functional.
+**On baseline failures** (tasks where baseline scored ≤3/5):
+- DYTM: helped 3/19, hurt 9/19, same 7/19 (net −6)
+- Hybrid: helped 6/19, hurt 5/19, same 8/19 (net +1)
 
-**On baseline failures** (tasks where baseline scored ≤3/5): DYTM helped 3/19, hurt 9/19, same 7/19. Even where direct NL fails, DYTM's PBT contract typically does worse.
+**Rejection distribution** (DYTM v3): 4 tasks with 0 rejections, 26 with 1, 5 with 2, 15 with 3+.
 
 ### 7.4 Iteration History
 
@@ -261,8 +263,9 @@ The Planner judges final output against its private `intent_summary` on a 1–5 
 | DYTM v1 | Reject-everything bug in Executive prompt | 24% high match, 0% first-attempt approve |
 | DYTM v2 | Fixed Executive prompt; still no Spec chat-mode | 24% → no improvement (Spec regressed on retries) |
 | DYTM v3 | Chat-mode Spec + convergence-aware Executive | **34% high match, 8% first-attempt approve** |
+| Hybrid | DYTM pipeline + Planner NL feedback rounds (up to 2) | **54% high match, avg 3.68/5** |
 
-The v1→v3 improvement (+10 pp high match, +0.24 avg) confirms the mechanical fixes worked. The remaining gap to baseline (-28 pp, -0.90 avg) is fundamental.
+The v1→v3 improvement (+10 pp high match, +0.24 avg) confirms the mechanical fixes worked. The remaining gap to baseline (-28 pp, -0.90 avg) is partially closed by the hybrid's NL feedback rounds (-8 pp, -0.30 avg).
 
 ### 7.5 Root Cause Analysis
 
@@ -317,7 +320,11 @@ The PBT contract is a lossy compression. It captures *some* testable properties 
 
 3. **The protocol works mechanically** — chat-mode Spec, convergence-aware Executive, and PBT-retry Coder all function correctly. The bottleneck is the *information capacity* of the PBT contract format.
 
-4. **Implication for future work**: DYTM's value lies in scenarios where verifiability matters more than expressiveness — safety-critical code, regulatory compliance, or adversarial settings where you need a *checkable* artifact, not a richer one. The contract format itself (not the protocol) needs enrichment: richer property types, NL annotations on PBTs, or a hybrid contract that includes both PBTs and structured NL constraints.
+4. **The hybrid recovers most of the gap** — adding NL feedback on top of the DYTM pipeline (Hybrid condition) recovers 67% of the deficit vs. baseline (3.08 → 3.68 of a 3.98 target). This confirms that PBTs and NL are complementary: PBTs catch structural bugs, NL preserves intent nuance. However, the hybrid still trails the baseline by 0.30 points, suggesting the locked PBT contract introduces residual drag that NL feedback cannot fully overcome.
+
+5. **On hard tasks, the hybrid helps more than it hurts** — on baseline failures (≤3/5), the hybrid helped 6 and hurt 5 (net +1), while DYTM alone helped 3 and hurt 9 (net −6). The standout: A2A/040 went from baseline=2, DYTM=3 to hybrid=5 — the PBT contract caught something NL missed, then NL feedback refined the rest.
+
+6. **Implication**: DYTM's value is as a *supplementary verification layer*, not a replacement for NL communication. The contract provides a checkable artifact and deterministic error correction; NL provides the expressiveness for intent transfer. The protocol's future lies in hybrid architectures, not pure PBT-based communication.
 
 ---
 

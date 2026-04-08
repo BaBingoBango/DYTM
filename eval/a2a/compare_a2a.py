@@ -1,95 +1,115 @@
-"""Quick comparison of A2A baseline vs DYTM results."""
+"""Quick comparison of A2A baseline vs DYTM vs Hybrid results."""
 import csv
 import glob
 import sys
 
 baseline_path = "eval/a2a/results/a2a_baseline_20260407_222753.csv"
 
-# Find latest DYTM result
+# Find latest DYTM and Hybrid results
 dytm_files = sorted(glob.glob("eval/a2a/results/a2a_dytm_*.csv"))
-if not dytm_files:
-    print("No DYTM results found")
-    sys.exit(1)
-dytm_path = dytm_files[-1]  # latest
-print(f"Comparing:\n  Baseline: {baseline_path}\n  DYTM:     {dytm_path}")
+hybrid_files = sorted(glob.glob("eval/a2a/results/a2a_hybrid_*.csv"))
 
-# Also show all DYTM runs for context
-if len(dytm_files) > 1:
-    print(f"  (All DYTM runs: {len(dytm_files)} total)")
+dytm_path = dytm_files[-1] if dytm_files else None
+hybrid_path = hybrid_files[-1] if hybrid_files else None
+
+print(f"Comparing:")
+print(f"  Baseline: {baseline_path}")
+if dytm_path:
+    print(f"  DYTM:     {dytm_path}")
+if hybrid_path:
+    print(f"  Hybrid:   {hybrid_path}")
 print()
 
-baseline = {}
-with open(baseline_path) as f:
-    for row in csv.DictReader(f):
-        baseline[row["task_id"]] = row
 
-dytm = {}
-with open(dytm_path) as f:
-    for row in csv.DictReader(f):
-        dytm[row["task_id"]] = row
+def load_csv(path):
+    data = {}
+    with open(path) as f:
+        for row in csv.DictReader(f):
+            data[row["task_id"]] = row
+    return data
 
-improved, regressed, tied = [], [], []
 
-for tid in sorted(baseline.keys()):
-    b = int(baseline[tid]["final_intent_match"])
-    d = int(dytm[tid]["final_intent_match"])
-    delta = d - b
-    if delta > 0:
-        improved.append((tid, b, d, delta))
-    elif delta < 0:
-        regressed.append((tid, b, d, delta))
-    else:
-        tied.append((tid, b, d))
+baseline = load_csv(baseline_path)
+conditions = {"Baseline": baseline}
 
-print("=== IMPROVED (DYTM > Baseline) ===")
-for tid, b, d, delta in improved:
-    print(f"  {tid}: {b} -> {d} (+{delta})")
-print(f"  Total: {len(improved)}")
+if dytm_path:
+    conditions["DYTM"] = load_csv(dytm_path)
+if hybrid_path:
+    conditions["Hybrid"] = load_csv(hybrid_path)
 
-print()
-print("=== REGRESSED (DYTM < Baseline) ===")
-for tid, b, d, delta in regressed:
-    print(f"  {tid}: {b} -> {d} ({delta})")
-print(f"  Total: {len(regressed)}")
 
-print()
-print("=== TIED ===")
-for tid, b, d in tied:
-    print(f"  {tid}: {b} = {d}")
-print(f"  Total: {len(tied)}")
+def compare_pair(name_a, data_a, name_b, data_b):
+    """Compare two conditions and print results."""
+    improved, regressed, tied = [], [], []
 
-print()
+    for tid in sorted(data_a.keys()):
+        if tid not in data_b:
+            continue
+        a = int(data_a[tid]["final_intent_match"])
+        b = int(data_b[tid]["final_intent_match"])
+        delta = b - a
+        if delta > 0:
+            improved.append((tid, a, b, delta))
+        elif delta < 0:
+            regressed.append((tid, a, b, delta))
+        else:
+            tied.append((tid, a, b))
+
+    print(f"=== {name_b} vs {name_a} ===")
+    print(f"  Improved ({name_b} > {name_a}): {len(improved)}")
+    for tid, a, b, d in improved[:10]:
+        print(f"    {tid}: {a} -> {b} (+{d})")
+    if len(improved) > 10:
+        print(f"    ... and {len(improved) - 10} more")
+
+    print(f"  Regressed ({name_b} < {name_a}): {len(regressed)}")
+    for tid, a, b, d in regressed[:10]:
+        print(f"    {tid}: {a} -> {b} ({d})")
+    if len(regressed) > 10:
+        print(f"    ... and {len(regressed) - 10} more")
+
+    print(f"  Tied: {len(tied)}")
+    print()
+
+
+# Aggregate stats
 print("=== AGGREGATE ===")
-b_scores = [int(baseline[t]["final_intent_match"]) for t in baseline]
-d_scores = [int(dytm[t]["final_intent_match"]) for t in dytm]
-print(f"  Baseline avg: {sum(b_scores)/len(b_scores):.2f}")
-print(f"  DYTM avg:     {sum(d_scores)/len(d_scores):.2f}")
-print(f"  Delta:        {(sum(d_scores)-sum(b_scores))/len(b_scores):+.2f}")
-print(f"  Baseline >=4: {sum(1 for s in b_scores if s>=4)}/50")
-print(f"  DYTM >=4:     {sum(1 for s in d_scores if s>=4)}/50")
-
+for name, data in conditions.items():
+    scores = [int(data[t]["final_intent_match"]) for t in data]
+    high = sum(1 for s in scores if s >= 4)
+    drift = sum(1 for t in data if data[t]["drift_detected"].lower() == "true")
+    avg = sum(scores) / len(scores)
+    print(f"  {name:10s}: avg={avg:.2f}/5  high>=4={high}/{len(scores)} ({high/len(scores)*100:.0f}%)  drift={drift}/{len(scores)}")
 print()
-print("=== ON BASELINE FAILURES (<=3/5) ===")
-bl_fails = [
-    (t, int(baseline[t]["final_intent_match"]), int(dytm[t]["final_intent_match"]))
-    for t in baseline
-    if int(baseline[t]["final_intent_match"]) <= 3
-]
-for tid, b, d in sorted(bl_fails):
-    arrow = "UP" if d > b else ("DOWN" if d < b else "SAME")
-    print(f"  {tid}: B={b} D={d} {arrow}")
-helped = sum(1 for _, b, d in bl_fails if d > b)
-hurt = sum(1 for _, b, d in bl_fails if d < b)
-same = sum(1 for _, b, d in bl_fails if d == b)
-print(f"  DYTM helped: {helped}/{len(bl_fails)}")
-print(f"  DYTM hurt:   {hurt}/{len(bl_fails)}")
-print(f"  Same:         {same}/{len(bl_fails)}")
 
+# Pairwise comparisons
+if "DYTM" in conditions:
+    compare_pair("Baseline", baseline, "DYTM", conditions["DYTM"])
+
+if "Hybrid" in conditions:
+    compare_pair("Baseline", baseline, "Hybrid", conditions["Hybrid"])
+
+if "DYTM" in conditions and "Hybrid" in conditions:
+    compare_pair("DYTM", conditions["DYTM"], "Hybrid", conditions["Hybrid"])
+
+# On baseline failures
+print("=== ON BASELINE FAILURES (<=3/5) ===")
+bl_fails = [t for t in baseline if int(baseline[t]["final_intent_match"]) <= 3]
+print(f"  Baseline failures: {len(bl_fails)}/50")
+
+for name, data in conditions.items():
+    if name == "Baseline":
+        continue
+    helped = sum(1 for t in bl_fails if t in data and int(data[t]["final_intent_match"]) > int(baseline[t]["final_intent_match"]))
+    hurt = sum(1 for t in bl_fails if t in data and int(data[t]["final_intent_match"]) < int(baseline[t]["final_intent_match"]))
+    same = sum(1 for t in bl_fails if t in data and int(data[t]["final_intent_match"]) == int(baseline[t]["final_intent_match"]))
+    print(f"  {name:10s}: helped={helped}  hurt={hurt}  same={same}")
+
+# Rejection pattern (DYTM & Hybrid)
 print()
 print("=== REJECTION PATTERN ===")
-rej_counts = [int(dytm[t]["contract_rejections"]) for t in dytm]
-print(f"  Tasks w/ 0 rejections: {sum(1 for r in rej_counts if r==0)}")
-print(f"  Tasks w/ 1 rejection:  {sum(1 for r in rej_counts if r==1)}")
-print(f"  Tasks w/ 2 rejections: {sum(1 for r in rej_counts if r==2)}")
-print(f"  Tasks w/ 3+ rejections: {sum(1 for r in rej_counts if r>=3)}")
-
+for name, data in conditions.items():
+    if name == "Baseline":
+        continue
+    rej = [int(data[t]["contract_rejections"]) for t in data]
+    print(f"  {name}: rej=0:{sum(1 for r in rej if r==0)}  rej=1:{sum(1 for r in rej if r==1)}  rej=2:{sum(1 for r in rej if r==2)}  rej=3+:{sum(1 for r in rej if r>=3)}")

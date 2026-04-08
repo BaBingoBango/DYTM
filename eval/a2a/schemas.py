@@ -165,7 +165,7 @@ class A2AResult(BaseModel):
     """Single-task result for either condition."""
 
     task_id: str
-    condition: Literal["baseline", "dytm"]
+    condition: Literal["baseline", "dytm", "hybrid"]
     planner_model: str
     coder_model: str
 
