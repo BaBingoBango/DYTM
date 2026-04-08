@@ -1,0 +1,656 @@
+{
+  "tasks": [
+    {
+      "task_id": "A2A/001",
+      "description": "Create a function that takes a list of phone numbers in various formats and returns them in a standardized format. The input list may contain numbers with different separators like dashes, spaces, or parentheses. Return the numbers in a clean, consistent format that's easy to work with.",
+      "function_name": "normalize_phone_numbers",
+      "intent_summary": "Should normalize to E.164 format (+1XXXXXXXXXX for US numbers). Must handle: (555) 123-4567, 555-123-4567, 555.123.4567, 5551234567, +1-555-123-4567. Should assume US numbers if no country code. Invalid numbers (wrong length, non-digits) should be filtered out entirely. Empty strings and None values should be skipped.",
+      "category": "data_transformation",
+      "complexity_axes": [
+        "edge_case_heavy",
+        "implicit_constraints"
+      ],
+      "ambiguity_level": "low"
+    },
+    {
+      "task_id": "A2A/002",
+      "description": "Write a function that takes a list of nested dictionaries representing customer records and flattens them into a simpler structure. Each record may have nested address information and contact details. The function should make the data easier to work with for reporting purposes.",
+      "function_name": "flatten_nested_records",
+      "intent_summary": "Should flatten using dot notation (e.g., 'address.street', 'contact.email'). Must handle arbitrary nesting depth. If duplicate keys exist at different levels, deeper keys should take precedence. None values should be preserved. Empty dictionaries should result in no keys being added. Lists within the structure should be converted to comma-separated strings.",
+      "category": "data_transformation",
+      "complexity_axes": [
+        "multi_step",
+        "implicit_constraints",
+        "underspecified_error_handling"
+      ],
+      "ambiguity_level": "medium"
+    },
+    {
+      "task_id": "A2A/003",
+      "description": "Create a function that processes daily sales transactions and groups them by product category and month. The input is a list of transaction dictionaries with date, product_id, category, and amount fields. Return summary statistics for each category-month combination.",
+      "function_name": "aggregate_sales_data",
+      "intent_summary": "Should group by category AND month (not just category). Date field might be string or datetime object. Must calculate: total_sales, transaction_count, average_sale. Handle missing category as 'Unknown'. Invalid dates should be skipped entirely. Amount should be treated as float, invalid amounts (non-numeric) should be treated as 0. Return format: {('Electronics', '2023-01'): {'total_sales': 1000, 'transaction_count': 5, 'average_sale': 200}}",
+      "category": "data_transformation",
+      "complexity_axes": [
+        "multi_step",
+        "implicit_constraints",
+        "edge_case_heavy"
+      ],
+      "ambiguity_level": "medium"
+    },
+    {
+      "task_id": "A2A/004",
+      "description": "Transform survey response data from long format to wide format. Each response record contains respondent_id, question_id, and answer. Convert this so each respondent becomes a single row with question responses as columns.",
+      "function_name": "pivot_survey_responses",
+      "intent_summary": "Classic pivot operation. Should handle: multiple responses per respondent-question (take the last one), missing responses (fill with None), question_ids should become column names prefixed with 'Q_'. Respondent_id becomes the index/key. If same respondent answers same question multiple times, last answer wins. Non-string question_ids should be converted to strings.",
+      "category": "data_transformation",
+      "complexity_axes": [
+        "multi_step",
+        "implicit_constraints"
+      ],
+      "ambiguity_level": "low"
+    },
+    {
+      "task_id": "A2A/005",
+      "description": "Process sensor data to remove outliers and fill gaps. The function receives time-series data with timestamps and sensor values. Some readings may be clearly erroneous or missing. Apply appropriate cleaning techniques to make the data suitable for analysis.",
+      "function_name": "clean_sensor_readings",
+      "intent_summary": "Should remove outliers using IQR method (values beyond Q1-1.5*IQR or Q3+1.5*IQR). Fill missing values (None, NaN, or gaps in timestamp sequence) using linear interpolation. Timestamps might be strings or datetime objects. If more than 50% of consecutive values are missing, don't interpolate that gap. Sort by timestamp first. Return same structure but cleaned.",
+      "category": "data_transformation",
+      "complexity_axes": [
+        "domain_specific_terms",
+        "ambiguous_boundary",
+        "underspecified_error_handling",
+        "multi_step"
+      ],
+      "ambiguity_level": "high"
+    },
+    {
+      "task_id": "A2A/006",
+      "description": "Combine customer data from multiple sources into unified profiles. Each source provides different information about the same customers, identified by email or customer_id. Handle cases where information conflicts between sources.",
+      "function_name": "merge_customer_profiles",
+      "intent_summary": "Should match customers by email first, then customer_id. When conflicts exist, prioritize sources in order provided (first source wins). Merge all non-conflicting fields. Email should be case-insensitive for matching. Handle: missing emails (use customer_id only), duplicate customers within same source (merge them), None values don't override existing values. Return list of unified customer dictionaries.",
+      "category": "data_transformation",
+      "complexity_axes": [
+        "multi_step",
+        "ambiguous_boundary",
+        "implicit_constraints",
+        "edge_case_heavy"
+      ],
+      "ambiguity_level": "high"
+    },
+    {
+      "task_id": "A2A/007",
+      "description": "Transform a dataset by converting measurement units in specified columns. The function should handle common unit conversions like temperature, distance, and weight. Support converting between metric and imperial systems based on provided mapping.",
+      "function_name": "convert_units_in_dataset",
+      "intent_summary": "Should support: temperature (C/F/K), distance (m/ft/in/km/mi), weight (kg/lb/g/oz). Conversion mapping provided as dict like {'temp_col': ('F', 'C')}. Handle missing values by leaving unchanged. Invalid numeric values should be skipped. Column names in mapping might not exist in dataset (ignore those). Precision should be maintained (don't round unless original was integer).",
+      "category": "data_transformation",
+      "complexity_axes": [
+        "domain_specific_terms",
+        "edge_case_heavy",
+        "implicit_constraints"
+      ],
+      "ambiguity_level": "medium"
+    },
+    {
+      "task_id": "A2A/008",
+      "description": "Parse and restructure log file entries into a more queryable format. Log entries contain timestamps, log levels, and messages with varying structures. Extract key information and organize it consistently.",
+      "function_name": "restructure_log_entries",
+      "intent_summary": "Should parse common log formats. Extract: timestamp (convert to datetime), level (ERROR, WARN, INFO, DEBUG), message, and any key-value pairs in message. Handle malformed entries by putting entire line in 'raw_message' field. Timestamp formats vary (ISO, syslog style, custom). Log levels might be case-insensitive. Key-value extraction should find patterns like 'key=value' or 'key:value'. Return list of structured dictionaries.",
+      "category": "data_transformation",
+      "complexity_axes": [
+        "ambiguous_boundary",
+        "underspecified_error_handling",
+        "multi_step",
+        "edge_case_heavy"
+      ],
+      "ambiguity_level": "high"
+    },
+    {
+      "task_id": "A2A/009",
+      "description": "Take normalized database tables and create a denormalized view for reporting. You'll receive related tables that need to be joined and flattened into a single structure. Handle foreign key relationships appropriately.",
+      "function_name": "denormalize_relational_data",
+      "intent_summary": "Should perform left joins based on foreign key relationships. Primary table is the first one provided. Join columns are implied by naming convention (table_name + '_id'). Handle: missing foreign keys (leave related fields as None), multiple matches in related tables (take first match), circular references (ignore). Flatten nested structures with table_name prefix. Preserve all columns from primary table.",
+      "category": "data_transformation",
+      "complexity_axes": [
+        "multi_step",
+        "implicit_constraints",
+        "domain_specific_terms"
+      ],
+      "ambiguity_level": "medium"
+    },
+    {
+      "task_id": "A2A/010",
+      "description": "Clean and standardize address data from various sources. Addresses come in different formats and may have inconsistent abbreviations, casing, or structure. Make them uniform for better matching and analysis.",
+      "function_name": "standardize_address_formats",
+      "intent_summary": "Should standardize: street abbreviations (St->Street, Ave->Avenue, etc.), state names to 2-letter codes, zip codes to 5-digit format (strip +4 extension), title case for street names and cities. Handle: missing components (preserve as None), international addresses (leave unchanged), PO Boxes (standardize to 'PO Box XXXX'). Remove extra whitespace. Apartment/unit numbers should be on separate line or after comma.",
+      "category": "data_transformation",
+      "complexity_axes": [
+        "domain_specific_terms",
+        "edge_case_heavy",
+        "ambiguous_boundary",
+        "implicit_constraints"
+      ],
+      "ambiguity_level": "high"
+    },
+    {
+      "task_id": "A2A/011",
+      "description": "Create a function that calculates the final discount amount for a customer purchase. The function should take the original price and customer type as parameters. Regular customers get 5% off, premium customers get 10% off, and VIP customers get 15% off. Return the discount amount in dollars.",
+      "function_name": "calculate_discount",
+      "intent_summary": "Function should return the discount AMOUNT (not final price). Must handle case-insensitive customer types ('Premium', 'PREMIUM', 'premium' all valid). Should handle invalid customer types by returning 0 discount (no error). Negative prices should return 0. Price of 0 should return 0. Discount calculation should round to 2 decimal places for currency.",
+      "category": "business_logic",
+      "complexity_axes": [
+        "implicit_constraints",
+        "underspecified_error_handling"
+      ],
+      "ambiguity_level": "low"
+    },
+    {
+      "task_id": "A2A/012",
+      "description": "Implement a function to calculate employee bonuses based on performance ratings and tenure. Employees with 'excellent' performance get a 20% bonus, 'good' gets 10%, and 'satisfactory' gets 5%. Employees with more than 5 years of service get an additional 2% bonus. The function takes base salary, performance rating, and years of service as inputs.",
+      "function_name": "process_employee_bonus",
+      "intent_summary": "Should return the total bonus amount (not new salary). Performance ratings should be case-insensitive. Years of service exactly 5 should NOT get the tenure bonus (must be >5). Invalid performance ratings should return 0. Negative salary or years should return 0. Bonus should be calculated on base salary, with tenure bonus applied to the base salary as well (not compounded). Result should be rounded to 2 decimal places.",
+      "category": "business_logic",
+      "complexity_axes": [
+        "implicit_constraints",
+        "multi_step",
+        "underspecified_error_handling"
+      ],
+      "ambiguity_level": "medium"
+    },
+    {
+      "task_id": "A2A/013",
+      "description": "Create a function that validates loan applications based on credit score, income, and debt-to-income ratio. Applications are approved if credit score is above 650, annual income exceeds $40,000, and debt-to-income ratio is below 0.4. Return True for approved applications, False otherwise.",
+      "function_name": "validate_loan_application",
+      "intent_summary": "All three conditions must be met simultaneously for approval. Credit score of exactly 650 should be rejected (must be >650). Income of exactly $40,000 should be rejected (must be >$40,000). Debt-to-income ratio of exactly 0.4 should be rejected (must be <0.4). Should handle None/null values by returning False. Negative values should return False. Debt-to-income ratio should be treated as a decimal (0.4 = 40%).",
+      "category": "business_logic",
+      "complexity_axes": [
+        "implicit_constraints",
+        "edge_case_heavy"
+      ],
+      "ambiguity_level": "low"
+    },
+    {
+      "task_id": "A2A/014",
+      "description": "Design a function to calculate shipping costs based on package weight, destination zone, and shipping method. Standard shipping costs $5 for packages under 2 lbs, $8 for 2-10 lbs, and $12 for over 10 lbs. Express shipping doubles the cost. International zones add a $15 surcharge. The function should handle domestic and international destinations.",
+      "function_name": "calculate_shipping_cost",
+      "intent_summary": "Weight boundaries are inclusive on the lower end: exactly 2 lbs uses the $8 rate, exactly 10 lbs uses the $8 rate. Express shipping doubles the BASE cost before international surcharge is added. International surcharge applies to both standard and express. Should handle zone inputs case-insensitively ('domestic', 'DOMESTIC', 'international', 'INTERNATIONAL'). Invalid zones should default to domestic. Zero or negative weight should return 0. Shipping method should be case-insensitive ('standard', 'express').",
+      "category": "business_logic",
+      "complexity_axes": [
+        "multi_step",
+        "implicit_constraints",
+        "ambiguous_boundary"
+      ],
+      "ambiguity_level": "medium"
+    },
+    {
+      "task_id": "A2A/015",
+      "description": "Implement a function that calculates insurance premiums for drivers. Base premium is $1200 annually. Drivers under 25 pay 50% more, drivers over 65 pay 25% more. Each accident in the last 3 years adds 20% to the premium. Good driver discounts of 10% apply to drivers with no accidents. The function takes age and number of recent accidents as parameters.",
+      "function_name": "determine_insurance_premium",
+      "intent_summary": "Age boundaries: exactly 25 should NOT get the under-25 surcharge, exactly 65 should NOT get the over-65 surcharge. Good driver discount only applies when accidents = 0, and should be applied AFTER age surcharges. Accident surcharge is multiplicative per accident (2 accidents = 1.2 * 1.2 = 1.44x multiplier). Cannot have both good driver discount and accident surcharge simultaneously. Negative age or accidents should return 0. Age and accidents should be integers.",
+      "category": "business_logic",
+      "complexity_axes": [
+        "multi_step",
+        "implicit_constraints",
+        "ambiguous_boundary",
+        "ordering_ambiguity"
+      ],
+      "ambiguity_level": "high"
+    },
+    {
+      "task_id": "A2A/016",
+      "description": "Create a function to calculate income tax liability using a progressive tax system. Income up to $10,000 is tax-free, income from $10,001 to $40,000 is taxed at 12%, income from $40,001 to $85,000 is taxed at 22%, and income above $85,000 is taxed at 24%. The function should return the total tax owed.",
+      "function_name": "calculate_tax_liability",
+      "intent_summary": "Progressive taxation means each bracket only applies to income within that range. Someone earning $50,000 pays: $0 on first $10,000, 12% on next $30,000, and 22% on remaining $10,000. Boundaries are inclusive: exactly $10,000 pays no tax, $10,001 starts the 12% bracket. Should handle negative income by returning 0. Should round result to 2 decimal places. Zero income returns 0 tax.",
+      "category": "business_logic",
+      "complexity_axes": [
+        "multi_step",
+        "implicit_constraints",
+        "domain_specific_terms"
+      ],
+      "ambiguity_level": "medium"
+    },
+    {
+      "task_id": "A2A/017",
+      "description": "Build a function that determines credit card limits for applicants. The base limit starts at $1,000. For every $10,000 of annual income, add $500 to the limit. Credit scores above 750 get a 50% bonus on the calculated limit. Existing customers with good payment history get an additional $1,000. The function takes income, credit score, and customer status as inputs.",
+      "function_name": "assess_credit_limit",
+      "intent_summary": "Income-based calculation should use integer division: $15,000 income = 1 increment of $500, $19,999 income = 1 increment. Credit score bonus applies to the income-adjusted limit before adding the customer bonus. Customer status should accept 'existing' (case-insensitive) for the $1,000 bonus, any other value gets no bonus. Credit score of exactly 750 should NOT get the bonus (must be >750). Negative income or credit score should result in base limit only ($1,000). Final limit should be rounded to nearest dollar.",
+      "category": "business_logic",
+      "complexity_axes": [
+        "multi_step",
+        "implicit_constraints",
+        "ambiguous_boundary",
+        "ordering_ambiguity"
+      ],
+      "ambiguity_level": "high"
+    },
+    {
+      "task_id": "A2A/018",
+      "description": "Design a function to calculate sales commission for representatives. Commission is 3% on sales up to $50,000, 5% on sales from $50,001 to $100,000, and 7% on sales above $100,000. Sales reps who exceed their monthly quota get a $500 bonus. The function should take total sales and monthly quota as parameters.",
+      "function_name": "calculate_commission",
+      "intent_summary": "Tiered commission structure like progressive tax: 3% only on first $50,000, 5% only on amount between $50,001-$100,000, etc. Quota bonus applies when sales > quota (not >=). Exactly meeting quota gets no bonus. Should handle negative sales by returning 0. Negative or zero quota should be treated as no quota (no bonus possible). Commission should be calculated first, then bonus added. Result rounded to 2 decimal places.",
+      "category": "business_logic",
+      "complexity_axes": [
+        "multi_step",
+        "implicit_constraints",
+        "ambiguous_boundary"
+      ],
+      "ambiguity_level": "medium"
+    },
+    {
+      "task_id": "A2A/019",
+      "description": "Create a function that determines customer membership tiers based on annual spending and account age. Bronze tier requires $1,000+ spending or 1+ years membership. Silver tier needs $5,000+ spending and 2+ years membership. Gold tier requires $15,000+ spending and 3+ years membership. Customers meeting multiple criteria should get the highest tier they qualify for.",
+      "function_name": "determine_membership_tier",
+      "intent_summary": "Bronze tier uses OR logic (spending OR years), while Silver and Gold use AND logic (spending AND years). Should return tier names as strings: 'Bronze', 'Silver', 'Gold', or 'None' if no criteria met. Boundaries are inclusive: exactly $1,000 and exactly 1 year qualify for Bronze. Should check tiers from highest to lowest and return first match. Account age should be in years (can be fractional). Negative values should result in 'None'. Case-sensitive return values.",
+      "category": "business_logic",
+      "complexity_axes": [
+        "multi_step",
+        "implicit_constraints",
+        "ambiguous_boundary",
+        "ordering_ambiguity"
+      ],
+      "ambiguity_level": "high"
+    },
+    {
+      "task_id": "A2A/020",
+      "description": "Implement a function to calculate overtime pay for employees. Regular hours are paid at the base rate. Hours worked over 40 in a week are paid at 1.5x the base rate. Hours worked over 60 in a week are paid at 2x the base rate. The function takes total hours worked and hourly rate as inputs and returns the total pay.",
+      "function_name": "calculate_overtime_pay",
+      "intent_summary": "Should return TOTAL pay (regular + overtime), not just overtime portion. Hours 1-40: base rate. Hours 41-60: 1.5x rate. Hours 61+: 2x rate. Exactly 40 hours gets no overtime. Exactly 60 hours gets 1.5x for hours 41-60, no 2x rate. Should handle fractional hours. Negative hours or rate should return 0. Zero hours should return 0. Rate and hours can be floats.",
+      "category": "business_logic",
+      "complexity_axes": [
+        "multi_step",
+        "implicit_constraints",
+        "ambiguous_boundary"
+      ],
+      "ambiguity_level": "high"
+    },
+    {
+      "task_id": "A2A/021",
+      "description": "Write a function that takes a text string and returns a list of unique email domains found in the text. The function should be able to handle various email formats and return domains in lowercase.",
+      "function_name": "extract_email_domains",
+      "intent_summary": "Extract email domains from text, but must handle edge cases: ignore emails in URLs (like mailto: links), handle international domains with non-ASCII characters, ignore malformed emails (missing @ or domain), preserve order of first occurrence while deduplicating, handle emails with plus addressing (user+tag@domain.com), and ignore emails within code blocks or quoted strings if they appear to be examples rather than real emails.",
+      "category": "string_text_processing",
+      "complexity_axes": [
+        "edge_case_heavy",
+        "implicit_constraints",
+        "ambiguous_boundary"
+      ],
+      "ambiguity_level": "high"
+    },
+    {
+      "task_id": "A2A/022",
+      "description": "Create a function that standardizes phone numbers in a text to a consistent format. It should handle US phone numbers and format them as (XXX) XXX-XXXX.",
+      "function_name": "format_phone_numbers",
+      "intent_summary": "Format US phone numbers only, ignoring international numbers. Must handle: 10-digit numbers with various separators, numbers with country code +1, numbers with extensions (ignore the extension part), partial numbers (less than 10 digits should be left unchanged), numbers within larger digit sequences (like credit cards) should be ignored, and preserve surrounding text exactly. Should not format numbers that appear to be dates, times, or other non-phone contexts.",
+      "category": "string_text_processing",
+      "complexity_axes": [
+        "edge_case_heavy",
+        "implicit_constraints",
+        "ambiguous_boundary"
+      ],
+      "ambiguity_level": "high"
+    },
+    {
+      "task_id": "A2A/023",
+      "description": "Write a function that cleans up whitespace in a text string by removing extra spaces and normalizing line breaks.",
+      "function_name": "clean_whitespace",
+      "intent_summary": "Clean whitespace but preserve intentional formatting: collapse multiple consecutive spaces into single spaces, normalize different line break types (\\r\\n, \\r, \\n) to \\n, remove trailing whitespace from each line, preserve single line breaks but collapse multiple consecutive line breaks to maximum of 2, preserve leading whitespace that appears to be intentional indentation (like code blocks or lists), and handle tabs by converting to appropriate number of spaces (4).",
+      "category": "string_text_processing",
+      "complexity_axes": [
+        "implicit_constraints",
+        "ambiguous_boundary"
+      ],
+      "ambiguity_level": "medium"
+    },
+    {
+      "task_id": "A2A/024",
+      "description": "Implement a function that extracts hashtags from social media text and returns them as a list.",
+      "function_name": "extract_hashtags",
+      "intent_summary": "Extract hashtags following social media conventions: must start with # followed by alphanumeric characters and underscores, case-insensitive deduplication but preserve original case of first occurrence, ignore # symbols that are not followed by valid characters, handle Unicode characters in hashtags, ignore hashtags within URLs, stop at punctuation or whitespace, maximum length of 100 characters per hashtag, and preserve order of first appearance.",
+      "category": "string_text_processing",
+      "complexity_axes": [
+        "edge_case_heavy",
+        "implicit_constraints",
+        "domain_specific_terms"
+      ],
+      "ambiguity_level": "medium"
+    },
+    {
+      "task_id": "A2A/025",
+      "description": "Create a function that splits text into individual sentences and returns them as a list.",
+      "function_name": "split_sentences",
+      "intent_summary": "Split sentences properly handling edge cases: periods in abbreviations (Dr., Mr., etc.) should not end sentences, handle multiple punctuation marks (e.g., '?!'), preserve sentence-ending punctuation with each sentence, handle decimal numbers and URLs without splitting, recognize common abbreviations and acronyms, handle quotes and parentheses properly, ignore periods in email addresses and file extensions, and strip leading/trailing whitespace from each sentence while preserving internal spacing.",
+      "category": "string_text_processing",
+      "complexity_axes": [
+        "edge_case_heavy",
+        "implicit_constraints",
+        "ambiguous_boundary"
+      ],
+      "ambiguity_level": "high"
+    },
+    {
+      "task_id": "A2A/026",
+      "description": "Write a function that masks sensitive information in text by replacing credit card numbers, SSNs, and phone numbers with asterisks.",
+      "function_name": "mask_sensitive_data",
+      "intent_summary": "Mask sensitive data with specific rules: credit cards (13-19 digits with optional separators) show only last 4 digits, SSNs (XXX-XX-XXXX format) show only last 4 digits, phone numbers show only last 4 digits, preserve original separators and formatting, don't mask numbers that are clearly dates, times, or other contexts, handle partial matches (don't mask incomplete patterns), and ensure masked output has same character count as original sensitive portion.",
+      "category": "string_text_processing",
+      "complexity_axes": [
+        "edge_case_heavy",
+        "implicit_constraints",
+        "domain_specific_terms"
+      ],
+      "ambiguity_level": "medium"
+    },
+    {
+      "task_id": "A2A/027",
+      "description": "Implement a function that converts text to proper title case formatting.",
+      "function_name": "convert_to_title_case",
+      "intent_summary": "Convert to title case with linguistic rules: capitalize first and last words always, don't capitalize articles (a, an, the), prepositions under 4 letters (of, in, on, at, by, for), coordinating conjunctions (and, but, or, nor), capitalize words after colons and hyphens, handle contractions properly (don't capitalize after apostrophes unless it's a new word), preserve existing capitalization of acronyms and proper nouns when clearly identifiable, and handle hyphenated words by capitalizing each part.",
+      "category": "string_text_processing",
+      "complexity_axes": [
+        "domain_specific_terms",
+        "implicit_constraints",
+        "edge_case_heavy"
+      ],
+      "ambiguity_level": "high"
+    },
+    {
+      "task_id": "A2A/028",
+      "description": "Create a function that removes HTML tags from text while preserving the readable content.",
+      "function_name": "remove_html_tags",
+      "intent_summary": "Remove HTML tags but preserve content structure: strip all HTML/XML tags including self-closing tags, decode HTML entities (&amp;, &lt;, etc.) to their characters, preserve whitespace structure by replacing block-level tags (div, p, br) with appropriate spacing, handle malformed HTML gracefully, preserve text content exactly, remove script and style tag contents entirely, and handle nested tags properly.",
+      "category": "string_text_processing",
+      "complexity_axes": [
+        "edge_case_heavy",
+        "implicit_constraints"
+      ],
+      "ambiguity_level": "low"
+    },
+    {
+      "task_id": "A2A/029",
+      "description": "Write a function that counts the frequency of words in a text and returns a dictionary with words as keys and counts as values.",
+      "function_name": "count_word_frequency",
+      "intent_summary": "Count word frequency with text processing rules: case-insensitive counting (convert to lowercase), remove punctuation attached to words but preserve hyphenated words, ignore common stop words (the, and, or, etc.), handle contractions as single words, ignore numbers unless they're part of hyphenated terms, strip leading/trailing punctuation but preserve internal punctuation, and return dictionary sorted by frequency (highest first) then alphabetically for ties.",
+      "category": "string_text_processing",
+      "complexity_axes": [
+        "implicit_constraints",
+        "ambiguous_boundary"
+      ],
+      "ambiguity_level": "medium"
+    },
+    {
+      "task_id": "A2A/030",
+      "description": "Implement a function that finds URLs in text and returns them in a standardized format.",
+      "function_name": "validate_and_format_urls",
+      "intent_summary": "Find and format URLs with validation: detect http/https URLs and common patterns without protocols (www.example.com), add https:// prefix to URLs missing protocol, validate that URLs have proper domain structure, ignore URLs within email addresses, handle international domain names, preserve query parameters and fragments, ignore malformed URLs, remove trailing punctuation that's not part of the URL, and return unique URLs in order of first appearance.",
+      "category": "string_text_processing",
+      "complexity_axes": [
+        "edge_case_heavy",
+        "implicit_constraints",
+        "ambiguous_boundary"
+      ],
+      "ambiguity_level": "low"
+    },
+    {
+      "task_id": "A2A/031",
+      "description": "Write a function that finds a peak element in an array. A peak element is greater than or equal to its neighbors. The array may contain duplicates and you can assume the array is non-empty. Return the index of any peak element.",
+      "function_name": "find_peak_element",
+      "intent_summary": "Must handle edge cases: single element (always peak), two elements (either can be peak), array boundaries (first/last elements only need one neighbor comparison). Should work with duplicates where equal values can form peaks. Must return valid index, not the value itself. Should handle negative numbers. The 'greater than or equal to' is key - equality counts as peak condition.",
+      "category": "algorithmic",
+      "complexity_axes": [
+        "edge_case_heavy",
+        "implicit_constraints",
+        "ambiguous_boundary"
+      ],
+      "ambiguity_level": "low"
+    },
+    {
+      "task_id": "A2A/032",
+      "description": "Implement a function to rotate a square matrix 90 degrees clockwise in-place. The matrix contains integers and you should modify the original matrix rather than creating a new one.",
+      "function_name": "rotate_matrix_clockwise",
+      "intent_summary": "Must be truly in-place (O(1) extra space, not O(n)). Should handle 1x1 matrix (no-op), 2x2 matrix, and larger squares. Must work with negative integers and zero. The rotation should be exactly 90 degrees clockwise. Should handle empty matrix gracefully (though description says square matrix). Matrix dimensions must be equal (square constraint).",
+      "category": "algorithmic",
+      "complexity_axes": [
+        "edge_case_heavy",
+        "implicit_constraints"
+      ],
+      "ambiguity_level": "low"
+    },
+    {
+      "task_id": "A2A/033",
+      "description": "Given a list of intervals, merge all overlapping intervals and return the result. Each interval is represented as a tuple of two integers. The intervals might not be sorted initially.",
+      "function_name": "merge_intervals",
+      "intent_summary": "Must sort intervals first by start time. Overlapping means any intersection, including touching intervals like (1,3) and (3,5) should merge to (1,5). Should handle empty list, single interval, completely disjoint intervals. Must work with negative numbers. Should handle intervals where start > end (invalid intervals) - either fix them or raise error. Return type should match input type (list of tuples).",
+      "category": "algorithmic",
+      "complexity_axes": [
+        "implicit_constraints",
+        "multi_step",
+        "underspecified_error_handling"
+      ],
+      "ambiguity_level": "medium"
+    },
+    {
+      "task_id": "A2A/034",
+      "description": "You have an array containing n distinct numbers taken from the range 0 to n. Find the missing number. The array is guaranteed to have exactly one missing number.",
+      "function_name": "find_missing_number",
+      "intent_summary": "Array has n numbers from range [0, n], so one number is missing. Must handle edge cases: empty array (missing 0), array with just [1] (missing 0), array with [0] (missing 1). Should use O(1) space if possible. Must work efficiently even for large n. The range is inclusive of both 0 and n. Should not assume array is sorted.",
+      "category": "algorithmic",
+      "complexity_axes": [
+        "edge_case_heavy",
+        "implicit_constraints"
+      ],
+      "ambiguity_level": "medium"
+    },
+    {
+      "task_id": "A2A/035",
+      "description": "Find the length of the longest increasing subsequence in an array. The subsequence doesn't need to be contiguous but should maintain the relative order of elements.",
+      "function_name": "longest_increasing_subsequence",
+      "intent_summary": "Must be strictly increasing (not non-decreasing), so duplicates break the sequence. Should handle empty array (return 0), single element (return 1), all decreasing (return 1), all same elements (return 1). Must work with negative numbers. Should be efficient - O(n log n) preferred over O(n²). Subsequence maintains original array order but can skip elements.",
+      "category": "algorithmic",
+      "complexity_axes": [
+        "implicit_constraints",
+        "multi_step",
+        "ambiguous_boundary"
+      ],
+      "ambiguity_level": "medium"
+    },
+    {
+      "task_id": "A2A/036",
+      "description": "Group strings that are anagrams of each other. Return a list of lists where each inner list contains anagrams. You can assume all strings contain only lowercase letters.",
+      "function_name": "group_anagrams",
+      "intent_summary": "Empty strings should group together. Single character strings group by character. Should handle empty input list (return empty list). Case sensitivity is resolved by 'lowercase only' constraint. Anagrams must have exact same character frequencies. Order of groups doesn't matter, but within each group preserve input order. Should handle strings with spaces/punctuation despite 'lowercase letters only' constraint - this is ambiguous.",
+      "category": "algorithmic",
+      "complexity_axes": [
+        "implicit_constraints",
+        "ambiguous_boundary",
+        "underspecified_error_handling"
+      ],
+      "ambiguity_level": "medium"
+    },
+    {
+      "task_id": "A2A/037",
+      "description": "Determine if a binary tree is a valid binary search tree. Each node has a value and left/right children. You can assume the tree structure is provided as nested dictionaries with 'val', 'left', and 'right' keys.",
+      "function_name": "validate_binary_search_tree",
+      "intent_summary": "Must enforce strict BST property: left subtree values < node value < right subtree values. This is global constraint, not just immediate children. Should handle None/empty tree (valid BST). Must work with duplicate values (typically invalid in BST). Should handle single node (valid). Must consider negative numbers. Tree structure: {'val': int, 'left': dict/None, 'right': dict/None}. Need to validate entire subtrees, not just immediate children.",
+      "category": "algorithmic",
+      "complexity_axes": [
+        "implicit_constraints",
+        "multi_step",
+        "domain_specific_terms",
+        "underspecified_error_handling"
+      ],
+      "ambiguity_level": "high"
+    },
+    {
+      "task_id": "A2A/038",
+      "description": "Find the shortest path from top-left to bottom-right in a grid where 1 represents obstacles and 0 represents free cells. You can move up, down, left, or right. Return the path length, or -1 if no path exists.",
+      "function_name": "shortest_path_grid",
+      "intent_summary": "Start at (0,0) and end at (bottom-right corner). Must handle grids where start or end is blocked (return -1). Should use BFS for shortest path. Path length means number of steps/moves, not number of cells visited. Must handle 1x1 grid (path length 0 if cell is free). Should handle empty grid or malformed input gracefully. Diagonal movement not allowed. Grid indexing assumed to be row-major.",
+      "category": "algorithmic",
+      "complexity_axes": [
+        "implicit_constraints",
+        "multi_step",
+        "underspecified_error_handling",
+        "ambiguous_boundary"
+      ],
+      "ambiguity_level": "high"
+    },
+    {
+      "task_id": "A2A/039",
+      "description": "Detect if a linked list has a cycle. The linked list nodes are represented as dictionaries with 'val' and 'next' keys. Return True if there's a cycle, False otherwise.",
+      "function_name": "detect_cycle_linked_list",
+      "intent_summary": "Must use Floyd's cycle detection or similar O(1) space algorithm. Should handle empty list (False), single node with self-loop (True), single node without loop (False). Node structure: {'val': any, 'next': dict/None}. Must handle very long lists efficiently. Should not modify the list structure. Cycle means any node points back to a previous node in the chain, creating infinite loop.",
+      "category": "algorithmic",
+      "complexity_axes": [
+        "implicit_constraints",
+        "edge_case_heavy",
+        "domain_specific_terms"
+      ],
+      "ambiguity_level": "high"
+    },
+    {
+      "task_id": "A2A/040",
+      "description": "Find the kth smallest element in an unsorted array. k is 1-indexed, meaning k=1 returns the smallest element. You should handle the case where k might be larger than the array size.",
+      "function_name": "kth_smallest_element",
+      "intent_summary": "k is 1-indexed (k=1 is minimum, k=2 is second smallest, etc.). Must handle k > array length (return None or raise exception). Should handle duplicates correctly - if array is [1,2,2,3] and k=3, answer is 2 (the second occurrence). Must handle k <= 0 (invalid input). Should work with negative numbers. Efficient solution preferred (quickselect O(n) average vs sorting O(n log n)). Empty array with any k should return None/raise error.",
+      "category": "algorithmic",
+      "complexity_axes": [
+        "implicit_constraints",
+        "edge_case_heavy",
+        "underspecified_error_handling",
+        "ambiguous_boundary"
+      ],
+      "ambiguity_level": "high"
+    },
+    {
+      "task_id": "A2A/041",
+      "description": "Create a function that accepts user profile data and returns a standardized profile dictionary. The function should handle basic user information like name, email, age, and any additional fields. Make sure to validate the email format and return appropriate error messages for invalid data.",
+      "function_name": "create_user_profile",
+      "intent_summary": "Expects strict validation: email must be valid format, age must be positive integer 13-120, name must be non-empty string with no special characters except hyphens/apostrophes. Should return dict with standardized keys (lowercase, underscores). Additional fields should be preserved but sanitized. Must raise ValueError with specific messages for validation failures, not return error dicts.",
+      "category": "api_interface_design",
+      "complexity_axes": [
+        "implicit_constraints",
+        "underspecified_error_handling"
+      ],
+      "ambiguity_level": "low"
+    },
+    {
+      "task_id": "A2A/042",
+      "description": "Implement a pagination function that takes a list of items, page number, and page size, then returns the appropriate page of results along with metadata. The function should handle edge cases gracefully and provide useful pagination information.",
+      "function_name": "paginate_results",
+      "intent_summary": "Must return dict with 'items', 'page', 'page_size', 'total_items', 'total_pages', 'has_next', 'has_previous' keys. Page numbers are 1-indexed. Empty list should return page 1 with empty items. Invalid page numbers (< 1 or > total_pages) should return empty items but valid metadata. Page size must be positive integer, default to 10 if not provided or invalid. Should handle page_size larger than total items.",
+      "category": "api_interface_design",
+      "complexity_axes": [
+        "edge_case_heavy",
+        "implicit_constraints"
+      ],
+      "ambiguity_level": "low"
+    },
+    {
+      "task_id": "A2A/043",
+      "description": "Create a webhook processing function that accepts a payload dictionary and event type, validates the structure, and returns a normalized response. The function should handle different event types appropriately and ensure data integrity. Include proper error handling for malformed payloads.",
+      "function_name": "process_webhook_payload",
+      "intent_summary": "Must support event types: 'user.created', 'user.updated', 'user.deleted', 'payment.completed', 'payment.failed'. Each event type has different required fields - user events need 'user_id', 'timestamp', payment events need 'payment_id', 'amount', 'timestamp'. Should validate timestamp is ISO format. Return dict with 'status', 'event_type', 'processed_data', 'errors'. Unknown event types should not raise exceptions but return status 'unsupported'. Missing required fields should collect all errors, not fail on first.",
+      "category": "api_interface_design",
+      "complexity_axes": [
+        "multi_step",
+        "implicit_constraints",
+        "underspecified_error_handling"
+      ],
+      "ambiguity_level": "medium"
+    },
+    {
+      "task_id": "A2A/044",
+      "description": "Build a function that constructs URL query parameters from a dictionary of filters. It should handle various data types, support array parameters, and clean up empty or None values. The output should be a properly formatted query string.",
+      "function_name": "build_query_params",
+      "intent_summary": "Must handle: strings (URL encode), integers/floats (convert to string), booleans (lowercase 'true'/'false'), lists/tuples (repeat param name: ?tags=a&tags=b), None values (skip entirely), empty strings (skip), datetime objects (ISO format). Should sort parameters alphabetically for consistency. Arrays with empty/None elements should skip those elements. Special characters in keys should be URL encoded. Return without leading '?' - just the param string.",
+      "category": "api_interface_design",
+      "complexity_axes": [
+        "edge_case_heavy",
+        "implicit_constraints",
+        "multi_step"
+      ],
+      "ambiguity_level": "medium"
+    },
+    {
+      "task_id": "A2A/045",
+      "description": "Implement a request validation function that checks incoming API requests against a schema definition. The function should validate required fields, data types, and constraints. Return validation results with detailed error information for debugging purposes.",
+      "function_name": "validate_api_request",
+      "intent_summary": "Schema format: dict with 'required' (list of field names), 'fields' (dict mapping field names to type constraints). Type constraints can be: 'string', 'integer', 'boolean', 'email', 'array'. Should also support nested validation with 'min_length', 'max_length' for strings, 'min_value', 'max_value' for integers. Return dict with 'valid' (boolean), 'errors' (list of dicts with 'field', 'message', 'value'). Must validate all fields before returning, not stop at first error. Missing required fields are separate from type validation errors.",
+      "category": "api_interface_design",
+      "complexity_axes": [
+        "multi_step",
+        "implicit_constraints",
+        "domain_specific_terms"
+      ],
+      "ambiguity_level": "medium"
+    },
+    {
+      "task_id": "A2A/046",
+      "description": "Create a response formatter that standardizes API responses across different endpoints. It should wrap data in a consistent structure and handle success and error cases. The formatter should support metadata and pagination information when provided.",
+      "function_name": "format_api_response",
+      "intent_summary": "Must return consistent structure: {'success': bool, 'data': any, 'message': str, 'meta': dict}. For success cases: success=True, data=provided_data, message=None unless specified, meta contains pagination/timestamp info. For errors: success=False, data=None, message=error_string, meta contains error_code if provided. Should auto-add 'timestamp' to meta in ISO format. Pagination meta should include page info if data is list and page params provided. Should handle None data gracefully (empty dict for success, None for error).",
+      "category": "api_interface_design",
+      "complexity_axes": [
+        "implicit_constraints",
+        "ambiguous_boundary"
+      ],
+      "ambiguity_level": "medium"
+    },
+    {
+      "task_id": "A2A/047",
+      "description": "Build a configuration merger that combines multiple API configuration dictionaries with proper precedence handling. The function should handle nested configurations and resolve conflicts intelligently. Support different merge strategies for different types of configuration values.",
+      "function_name": "merge_api_configs",
+      "intent_summary": "Default merge strategy: later configs override earlier ones for scalar values, lists get concatenated (with deduplication), nested dicts get recursively merged. Special keys need different handling: 'headers' dict should merge (case-insensitive key matching), 'timeouts' should take maximum value, 'retries' should take minimum value, 'enabled_features' list should union, 'disabled_features' list should union. Should preserve original configs unchanged. Handle circular references in nested structures. Empty/None configs should be skipped entirely.",
+      "category": "api_interface_design",
+      "complexity_axes": [
+        "multi_step",
+        "implicit_constraints",
+        "domain_specific_terms",
+        "ambiguous_boundary"
+      ],
+      "ambiguity_level": "high"
+    },
+    {
+      "task_id": "A2A/048",
+      "description": "Implement an API call throttling decorator that limits the rate of function calls based on configurable rules. The throttling should be intelligent and handle burst scenarios appropriately. Include mechanisms for different clients or API keys to have separate limits.",
+      "function_name": "throttle_api_calls",
+      "intent_summary": "Should implement token bucket algorithm with per-client tracking. Default: 100 calls per minute, burst of 10. Function signature should accept rate_limit (calls per minute), burst_size (immediate calls allowed), and get_client_id function to extract client identifier from args. Must maintain state between calls using function attributes or closures. When limit exceeded, should raise custom RateLimitExceeded exception with retry_after seconds. Should handle concurrent access safely. Client ID extraction should default to first argument if no custom function provided.",
+      "category": "api_interface_design",
+      "complexity_axes": [
+        "multi_step",
+        "implicit_constraints",
+        "domain_specific_terms",
+        "underspecified_error_handling"
+      ],
+      "ambiguity_level": "high"
+    },
+    {
+      "task_id": "A2A/049",
+      "description": "Create a content negotiation function that determines the best response format based on client Accept headers and server capabilities. The function should handle quality values and wildcards properly. Support multiple content types and fallback scenarios.",
+      "function_name": "negotiate_content_type",
+      "intent_summary": "Must parse Accept header with q-values (default 1.0), handle wildcards (*/* and type/*), and match against supported types list. Should return dict with 'content_type', 'charset', 'quality_score'. Supported types should include quality scores for server preference. Algorithm: parse client preferences, match against server capabilities, calculate combined scores (client_q * server_preference), return highest scoring match. Handle malformed headers gracefully (return default). Support charset negotiation for text types. If no match, return None or 406 error indicator based on strict parameter.",
+      "category": "api_interface_design",
+      "complexity_axes": [
+        "multi_step",
+        "domain_specific_terms",
+        "edge_case_heavy",
+        "implicit_constraints"
+      ],
+      "ambiguity_level": "high"
+    },
+    {
+      "task_id": "A2A/050",
+      "description": "Build a schema transformation function that converts between different API specification formats. The function should handle version differences and maintain semantic equivalence while adapting structure. Include validation of the transformation results.",
+      "function_name": "transform_api_schema",
+      "intent_summary": "Must support OpenAPI 2.0 to 3.0 conversion and vice versa. Key transformations: 'swagger' field becomes 'openapi', 'definitions' becomes 'components/schemas', 'parameters' handling changes (body vs requestBody), security schemes format changes. Should preserve all semantic information, validate input schema format first, handle missing optional fields gracefully. Return dict with 'transformed_schema', 'warnings' (list of non-critical issues), 'errors' (list of critical problems). Must handle $ref resolution within schemas. Unknown/custom extensions (x-*) should be preserved unchanged.",
+      "category": "api_interface_design",
+      "complexity_axes": [
+        "multi_step",
+        "domain_specific_terms",
+        "implicit_constraints",
+        "edge_case_heavy"
+      ],
+      "ambiguity_level": "high"
+    }
+  ]
+}

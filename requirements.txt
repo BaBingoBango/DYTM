@@ -8,4 +8,5 @@ hypothesis-jsonschema
 jinja2
 rich
 pytest
+python-dotenv
 

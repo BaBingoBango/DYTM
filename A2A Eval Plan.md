@@ -258,25 +258,47 @@ Unlike HumanEval (where the "judge" is a static test suite), the Planner *genera
 ### 5.1 New Files
 
 ```
-eval/
-├── a2a/
-│   ├── __init__.py
-│   ├── planner.py              # Task generation + Planner-as-Executive + Planner-as-Judge
-│   ├── task_bank.py            # Generated/curated task inventory (50 tasks)
-│   ├── run_a2a_baseline.py     # Condition A: NL-only delegation
-│   ├── run_a2a_dytm.py         # Condition B: DYTM protocol delegation
-│   ├── judge.py                # Planner judgment protocol
-│   ├── metrics.py              # Compute all metrics from result CSVs
-│   └── results/                # Output CSVs
+eval/a2a/
+├── __init__.py
+├── schemas.py              # Pydantic models: tasks, judgments, results
+├── planner.py              # Task generation + adversarial Executive + NL feedback + judgment
+├── generate_tasks.py       # CLI: generate task bank JSON
+├── run_a2a_baseline.py     # Condition A: NL-only delegation
+├── run_a2a_dytm.py         # Condition B: DYTM protocol delegation
+├── metrics.py              # Compare baseline vs DYTM results
+└── results/                # Output CSVs + task_bank.json
 ```
 
-### 5.2 Changes to Existing Code
+### 5.2 Running the Experiment
 
-| File | Change | Reason |
-|---|---|---|
-| `dytm/graph.py` | Add `planner_as_executive` option to `build_graph()` | Wire Planner LLM as the Executive approval node |
-| `dytm/nodes/approval.py` | Support external model as Executive (already partially implemented) | Planner reviews CNL with its original intent in context |
-| None (new files only) | — | The existing DYTM pipeline is reused as-is; only the eval harness is new |
+```bash
+# Step 1: Generate task bank (requires ANTHROPIC_API_KEY)
+python -m eval.a2a.generate_tasks --n-tasks 50
+
+# Step 2: Run baseline condition
+python -m eval.a2a.run_a2a_baseline \
+    --tasks eval/a2a/results/task_bank.json \
+    --planner-model claude-3-5-sonnet-20241022 \
+    --coder-model gpt-4o-mini \
+    --max-rounds 4
+
+# Step 3: Run DYTM condition
+python -m eval.a2a.run_a2a_dytm \
+    --tasks eval/a2a/results/task_bank.json \
+    --planner-model claude-3-5-sonnet-20241022 \
+    --coder-model gpt-4o-mini \
+    --max-retries 4 \
+    --max-spec-retries 2
+
+# Step 4: Compare results
+python -m eval.a2a.metrics \
+    eval/a2a/results/a2a_baseline_*.csv \
+    eval/a2a/results/a2a_dytm_*.csv
+```
+
+### 5.3 Changes to Existing Code
+
+No changes to existing DYTM pipeline code were needed. The A2A DYTM runner (`run_a2a_dytm.py`) builds a per-task graph that swaps in a custom Planner-as-Executive approval node, reusing the existing `spec`, `translator`, `coder`, and `doer` nodes as-is. This was possible because the approval node is a simple function injection point — the rest of the pipeline is task-agnostic.
 
 ### 5.3 Build Phases
 
