@@ -36,6 +36,7 @@ from rich.panel import Panel
 from dytm.graph import build_graph  # noqa: F401 — kept for reference
 from dytm.nodes.spec import make_spec_node
 from dytm.nodes.translator import translator_node
+from dytm.state import DYTMState
 from eval.a2a.planner import (
     adversarial_executive_review,
     judge_output_majority,
@@ -61,8 +62,14 @@ def _make_planner_executive_approval(planner_model, task: A2ATask):
 
     def planner_approval_node(state: dict) -> dict:
         cnl_text = state.get("cnl_text", "(no contract)")
+        previous_feedback = state.get("approval_feedback")
+        attempt = state.get("spec_retry_count", 0)
 
-        decision = adversarial_executive_review(planner_model, task, cnl_text)
+        decision = adversarial_executive_review(
+            planner_model, task, cnl_text,
+            previous_feedback=previous_feedback,
+            attempt=attempt,
+        )
 
         result = {
             "approved": decision.approved,
@@ -96,7 +103,6 @@ def _build_a2a_graph(
     from langgraph.graph import END, StateGraph
     from dytm.nodes.coder import make_coder_node
     from dytm.nodes.doer import doer_node
-    from dytm.state import DYTMState
 
     spec_node = make_spec_node(spec_model)
     coder_node = make_coder_node(coder_model)

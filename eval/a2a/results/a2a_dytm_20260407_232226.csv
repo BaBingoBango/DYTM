@@ -1,0 +1,1 @@
+task_id,condition,planner_model,coder_model,final_intent_match,drift_detected,drift_category,drift_description,rounds_to_agreement,first_attempt_aligned,contract_rejections,pbt_retries,contract_faithfulness,total_llm_calls,wall_clock_sec,judgment_votes

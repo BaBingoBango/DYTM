@@ -72,3 +72,7 @@ class DYTMState(TypedDict, total=False):
     _multi_spec_mode: Optional[str]  # "contrastive" or "temperature" (multi-spec strategy used)
     _multi_spec_difficulty: Optional[str]  # analyst difficulty rating: simple/moderate/tricky
     _multi_spec_ambiguities: Optional[int]  # number of ambiguity axes found
+
+    # -- Spec conversation history -------------------------------------------
+    _spec_conversation: Optional[list]  # accumulated (role, content) pairs for chat-mode Spec
+

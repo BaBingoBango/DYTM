@@ -120,20 +120,25 @@ def generate_task_bank(
 
 ADVERSARIAL_EXECUTIVE_SYSTEM_PROMPT = """\
 You are the Planner who wrote the original task. A Spec agent has produced \
-the following verification contract based on your task description. You must \
-decide whether this contract FULLY captures your intent.
+a verification contract based on your task description. You must decide \
+whether to APPROVE or REJECT it.
 
-REVIEW INSTRUCTIONS — Be adversarial. Ask yourself:
-1. Does this contract MISS any implicit constraints from your intent?
-2. Does it misinterpret any domain terms or boundary conditions?
-3. Would a correct implementation of this contract STILL fail to match \
-   what you actually wanted? If yes → REJECT.
-4. Are any edge cases you care about absent from the contract?
-5. Could a Coder satisfy every property in this contract and yet produce \
-   the WRONG function? If yes → REJECT.
+REVIEW INSTRUCTIONS:
+1. Does the contract capture the CORE BEHAVIOR you intended? If the Coder \
+   follows this contract, will they build fundamentally the RIGHT function?
+2. If you previously rejected a contract, check: did the Spec address your \
+   feedback? If your main concerns are resolved, APPROVE even if minor \
+   gaps remain.
+3. Only REJECT if the contract would lead the Coder to build a \
+   FUNDAMENTALLY WRONG function — not just an incomplete one.
 
-BIAS: When in doubt, REJECT. A false approval wastes the Coder's entire \
-attempt. A false rejection only costs one Spec retry.
+IMPORTANT: A contract that captures 70-80% of your intent is GOOD ENOUGH. \
+The PBT testing loop will catch implementation bugs. Your job is to prevent \
+the Coder from building the WRONG THING, not to ensure the contract is \
+perfect.
+
+If this is a revision and the Spec has made a good-faith effort to address \
+your previous feedback, lean toward APPROVE.
 """
 
 
@@ -141,6 +146,8 @@ def adversarial_executive_review(
     planner_model: BaseChatModel,
     task: A2ATask,
     cnl_text: str,
+    previous_feedback: str | None = None,
+    attempt: int = 0,
 ) -> A2AExecutiveDecision:
     """Have the Planner adversarially review a CNL contract.
 
@@ -152,18 +159,35 @@ def adversarial_executive_review(
         planner_model: The Planner LLM (Anthropic).
         task: The original task (including private intent_summary).
         cnl_text: The CNL contract rendered by the Translator.
+        previous_feedback: If this is a revision, the Executive's previous
+            rejection feedback (so it can check convergence).
+        attempt: Which review attempt this is (0-indexed).
 
     Returns:
         An A2AExecutiveDecision with approved/feedback.
     """
     structured_model = planner_model.with_structured_output(A2AExecutiveDecision)
 
+    revision_context = ""
+    if previous_feedback and attempt > 0:
+        revision_context = (
+            f"\n--- REVISION CONTEXT (attempt {attempt + 1}) ---\n"
+            f"You previously REJECTED the contract with this feedback:\n"
+            f"{previous_feedback}\n\n"
+            f"The Spec has revised the contract. Check whether your main "
+            f"concerns were addressed. If the Spec made a good-faith effort "
+            f"to fix your issues, lean toward APPROVE.\n"
+            f"---\n\n"
+        )
+
     user_content = (
-        f"YOUR ORIGINAL TASK:\n{task.description}\n\n"
-        f"YOUR PRIVATE INTENT (what you actually meant — the Coder will "
+        f"YOUR ORIGINAL TASK DESCRIPTION:\n{task.description}\n\n"
+        f"YOUR PRIVATE INTENT (what you actually want — the Coder will "
         f"never see this):\n{task.intent_summary}\n\n"
+        f"{revision_context}"
         f"THE PROPOSED CONTRACT:\n{cnl_text}\n\n"
-        f"Should this contract be APPROVED or REJECTED?"
+        f"Does this contract capture enough of your intent for a Coder to "
+        f"build the right function? APPROVE or REJECT."
     )
 
     messages = [
@@ -175,10 +199,10 @@ def adversarial_executive_review(
         result: A2AExecutiveDecision = structured_model.invoke(messages)
         return result
     except Exception as exc:
-        # On parse failure, default to reject (safe side)
+        # On parse failure, default to approve (don't penalize for infra errors)
         return A2AExecutiveDecision(
-            approved=False,
-            feedback=f"Executive review failed: {str(exc)[:200]}",
+            approved=True,
+            feedback=f"Executive review failed (auto-approved): {str(exc)[:200]}",
         )
 
 

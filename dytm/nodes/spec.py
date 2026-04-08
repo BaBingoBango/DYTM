@@ -193,42 +193,56 @@ def make_spec_node(model: BaseChatModel):
     Returns:
         A node function ``(DYTMState) -> dict`` suitable for LangGraph.
     """
+    from langchain_core.messages import AIMessage
+
     structured_model = model.with_structured_output(SpecOutput)
 
     def spec_node(state: DYTMState) -> dict:
         """Call the LLM to generate PBT specification ONLY (no code).
 
-        On first run, sends only the task prompt.  If the Executive LLM
-        rejected the previous contract, appends the rejection feedback.
+        Uses chat-mode conversation: on retries, the full history of
+        previous spec outputs and rejection feedback is preserved so the
+        model can make targeted fixes without regressing on earlier fixes.
 
         If the LLM call fails (API error, structured output parse error),
         returns a minimal fallback PBT payload so the graph continues
         rather than crashing.
         """
-        messages = [SystemMessage(content=SPEC_SYSTEM_PROMPT)]
-
         prompt = state["prompt"]
         spec_retry = state.get("spec_retry_count", 0)
         approval_feedback = state.get("approval_feedback")
+        conversation = list(state.get("_spec_conversation") or [])
 
-        if spec_retry > 0 and approval_feedback:
-            user_content = (
-                f"Task: {prompt}\n\n"
-                f"--- PREVIOUS CONTRACT REJECTED (attempt {spec_retry}) ---\n"
-                f"Rejection reason:\n{approval_feedback}\n\n"
-                f"Please revise your specification to address this feedback."
-            )
+        # Build messages from conversation history
+        messages = [SystemMessage(content=SPEC_SYSTEM_PROMPT)]
+
+        if spec_retry == 0 or not conversation:
+            # First attempt — fresh start
+            messages.append(HumanMessage(content=f"Task: {prompt}"))
         else:
-            user_content = f"Task: {prompt}"
+            # Retry — replay full conversation history as multi-turn chat
+            for role, content in conversation:
+                if role == "human":
+                    messages.append(HumanMessage(content=content))
+                elif role == "ai":
+                    messages.append(AIMessage(content=content))
 
-        messages.append(HumanMessage(content=user_content))
+            # Add the latest rejection feedback
+            if approval_feedback:
+                messages.append(HumanMessage(content=(
+                    f"--- CONTRACT REJECTED (attempt {spec_retry}) ---\n"
+                    f"Rejection reason:\n{approval_feedback}\n\n"
+                    f"Please revise your specification to address this feedback. "
+                    f"IMPORTANT: Do NOT regress on fixes from previous rounds. "
+                    f"Keep everything that was already correct and only fix "
+                    f"what was flagged."
+                )))
 
         try:
             result: SpecOutput = structured_model.invoke(messages)
         except Exception as exc:
             # LLM call failed — return a minimal fallback PBT so the graph
             # can continue (the Doer will fail, triggering a retry).
-            # Extract a function name from the prompt as best-effort.
             fallback_name = "unknown_function"
             for word in prompt.split():
                 if word.isidentifier() and word not in ("def", "the", "a", "an", "is", "if"):
@@ -249,8 +263,32 @@ def make_spec_node(model: BaseChatModel):
                 },
             }
 
+        # Serialize the spec output for conversation history
+        import json
+        spec_json = json.dumps(result.pbt.model_dump(), indent=2)
+
+        # Build updated conversation history
+        if spec_retry == 0 or not conversation:
+            # First turn: human prompt + AI response
+            new_conversation = [
+                ("human", f"Task: {prompt}"),
+                ("ai", spec_json),
+            ]
+        else:
+            # Append the rejection + new AI response
+            new_conversation = conversation.copy()
+            if approval_feedback:
+                new_conversation.append((
+                    "human",
+                    f"--- CONTRACT REJECTED (attempt {spec_retry}) ---\n"
+                    f"Rejection reason:\n{approval_feedback}\n\n"
+                    f"Please revise your specification."
+                ))
+            new_conversation.append(("ai", spec_json))
+
         return {
             "pbt_payload": result.pbt.model_dump(),
+            "_spec_conversation": new_conversation,
         }
 
     return spec_node
