@@ -256,6 +256,66 @@ The Planner judges final output against its private `intent_summary` on a 1–5 
 
 **Rejection distribution** (DYTM v3): 4 tasks with 0 rejections, 26 with 1, 5 with 2, 15 with 3+.
 
+<details>
+<summary><strong>Full per-task A2A comparison (all 50 tasks)</strong></summary>
+
+| Task | Baseline | DYTM v3 | Hybrid | Δ DYTM | Δ Hybrid | Drift Category (DYTM) |
+|---|---|---|---|---|---|---|
+| A2A/001 | 5 | 4 | 2 | −1 | −3 | error_handling |
+| A2A/002 | 3 | 4 | 2 | +1 | −1 | implicit_constraint |
+| A2A/003 | 5 | 2 | 3 | −3 | −2 | error_handling |
+| A2A/004 | 5 | 5 | 5 | 0 | 0 | — |
+| A2A/005 | 2 | 2 | 3 | 0 | +1 | implicit_constraint |
+| A2A/006 | 2 | 2 | 2 | 0 | 0 | domain_term |
+| A2A/007 | 4 | 2 | 3 | −2 | −1 | implicit_constraint |
+| A2A/008 | 4 | 2 | 3 | −2 | −1 | implicit_constraint |
+| A2A/009 | 2 | 1 | 2 | −1 | 0 | other |
+| A2A/010 | 3 | 2 | 3 | −1 | 0 | implicit_constraint |
+| A2A/011 | 5 | 5 | 5 | 0 | 0 | — |
+| A2A/012 | 5 | 3 | 5 | −2 | 0 | implicit_constraint |
+| A2A/013 | 5 | 5 | 5 | 0 | 0 | — |
+| A2A/014 | 5 | 2 | 5 | −3 | 0 | implicit_constraint |
+| A2A/015 | 5 | 5 | 5 | 0 | 0 | — |
+| A2A/016 | 5 | 5 | 5 | 0 | 0 | — |
+| A2A/017 | 5 | 3 | 5 | −2 | 0 | implicit_constraint |
+| A2A/018 | 5 | 2 | 4 | −3 | −1 | implicit_constraint |
+| A2A/019 | 5 | 4 | 5 | −1 | 0 | edge_case |
+| A2A/020 | 5 | 5 | 5 | 0 | 0 | — |
+| A2A/021 | 1 | 2 | 2 | +1 | +1 | implicit_constraint |
+| A2A/022 | 4 | 2 | 4 | −2 | 0 | implicit_constraint |
+| A2A/023 | 5 | 2 | 2 | −3 | −3 | implicit_constraint |
+| A2A/024 | 3 | 2 | 3 | −1 | 0 | implicit_constraint |
+| A2A/025 | 2 | 2 | 3 | 0 | +1 | edge_case |
+| A2A/026 | 2 | 2 | 2 | 0 | 0 | implicit_constraint |
+| A2A/027 | 3 | 2 | 2 | −1 | −1 | boundary_condition |
+| A2A/028 | 3 | 3 | 3 | 0 | 0 | implicit_constraint |
+| A2A/029 | 3 | 2 | 4 | −1 | +1 | implicit_constraint |
+| A2A/030 | 3 | 3 | 3 | 0 | 0 | implicit_constraint |
+| A2A/031 | 5 | 5 | 5 | 0 | 0 | — |
+| A2A/032 | 5 | 5 | 4 | 0 | −1 | — |
+| A2A/033 | 5 | 5 | 5 | 0 | 0 | — |
+| A2A/034 | 5 | 5 | 5 | 0 | 0 | — |
+| A2A/035 | 5 | 3 | 5 | −2 | 0 | performance |
+| A2A/036 | 4 | 4 | 5 | 0 | +1 | ordering |
+| A2A/037 | 5 | 5 | 5 | 0 | 0 | — |
+| A2A/038 | 5 | 5 | 5 | 0 | 0 | — |
+| A2A/039 | 5 | 5 | 4 | 0 | −1 | — |
+| A2A/040 | 2 | 3 | 5 | +1 | +3 | performance |
+| A2A/041 | 5 | 2 | 4 | −3 | −1 | error_handling |
+| A2A/042 | 5 | 2 | 2 | −3 | −3 | return_type |
+| A2A/043 | 3 | 2 | 5 | −1 | +2 | implicit_constraint |
+| A2A/044 | 3 | 3 | 3 | 0 | 0 | implicit_constraint |
+| A2A/045 | 5 | 3 | 4 | −2 | −1 | implicit_constraint |
+| A2A/046 | 5 | 2 | 3 | −3 | −2 | implicit_constraint |
+| A2A/047 | 3 | 2 | 2 | −1 | −1 | implicit_constraint |
+| A2A/048 | 4 | 2 | 4 | −2 | 0 | other |
+| A2A/049 | 3 | 2 | 2 | −1 | −1 | implicit_constraint |
+| A2A/050 | 3 | 2 | 2 | −1 | −1 | domain_term |
+
+**Standout tasks**: A2A/040 (quickselect) went from baseline=2, DYTM=3 to hybrid=5 — the PBT contract caught a structural bug that NL missed, then NL feedback refined the algorithm choice. A2A/043 (event validation) went from baseline=3, DYTM=2 to hybrid=5 — NL feedback recovered from PBT's information loss. A2A/023 (whitespace cleaning) regressed in all conditions (5→2→2) — an example of intent complexity that neither PBT nor limited NL rounds could resolve.
+
+</details>
+
 ### 7.4 Iteration History
 
 | Version | Change | Result |
@@ -343,7 +403,51 @@ The PBT contract is a lossy compression. It captures *some* testable properties 
 
 ---
 
-## 9. Future Directions
+## 9. Discussion & Lessons Learned
+
+### 9.1 DYTM Is Spec-Driven Development, Inline
+
+The full arc of experiments — HumanEval, cross-model, deterministic taxonomy, A2A — converges on a single insight: DYTM is **lightweight spec-driven development, applied inline at generation time**. The CNL contract is a lightweight specification; the PBT suite is an automated acceptance test; the Executive checkpoint is a spec review gate.
+
+This is not a novel pattern in software engineering. What DYTM adds is: (1) the spec is generated automatically from a natural-language prompt, (2) the spec is rendered in human-readable CNL for review, (3) the spec is enforced via property-based tests against infinite inputs (not just example cases), and (4) the entire loop is automated within an LLM pipeline. The novelty is in the *application* to LLM-generated code, not the pattern itself.
+
+### 9.2 The Two Failure Scenarios DYTM Addresses
+
+A human requests code from an LLM. Three outcomes are possible:
+
+1. **Code is correct** — no intervention needed.
+2. **Code is wrong, and the human doesn't notice** — the human ships buggy code. DYTM addresses this: the PBT suite catches structural bugs that the human might miss, and the CNL contract surfaces the *intended behavior* for review before any code is written.
+3. **Code is not what the human meant** — the human's prompt was ambiguous, and the LLM chose the wrong interpretation. DYTM partially addresses this: the CNL contract makes the chosen interpretation explicit, giving the human a chance to catch the mismatch. However, the A2A experiment shows that PBT contracts lose too much NL nuance to fully replace direct communication.
+
+Scenario (2) is DYTM's sweet spot. Scenario (3) requires the hybrid approach (PBT + NL). There is also a scenario (2b): the human's *intent itself* is wrong (they asked for the wrong thing). This is fundamentally uncatchable by any verification system — it's a human error, not a communication error.
+
+### 9.3 PBT Contracts Are Lossy — But So Are All Translations
+
+The A2A experiment's core finding — that PBT contracts are a lossy compression of NL intent — is not surprising in hindsight. *Every* formalization of natural language loses information. The question isn't "is it lossy?" but "is the loss acceptable for the use case?"
+
+For **algorithmic tasks** with clear input→output relationships (HumanEval-style), PBT contracts capture most of what matters. The +1.8% HumanEval improvement and 50% error recovery rate on baseline failures demonstrate this.
+
+For **complex, multi-constraint tasks** with nuanced NL requirements (A2A-style), PBT contracts miss too much. The 0.90-point intent match regression vs. direct NL communication demonstrates this.
+
+The practical implication: DYTM's value scales inversely with task NL-complexity. It helps most on precisely the tasks where LLMs already perform well, and helps least where they struggle most. This is a fundamental tension.
+
+### 9.4 The "TCP for Agent Intent" Analogy
+
+TCP doesn't guarantee you're sending the right data — it guarantees the data arrives as sent. DYTM was conceived as TCP for agent intent: a fidelity protocol, not a correctness oracle. The A2A experiment tested this analogy directly.
+
+The result: the analogy holds for the PBT retry loop (structural error correction ≈ TCP checksums) but breaks for the CNL contract (intent verification ≈ ... nothing in TCP, because TCP doesn't inspect payloads). The CNL contract is more like a content-type header: it describes *what kind of thing* is being sent, but not the full content. Useful, but not sufficient to replace the content itself.
+
+### 9.5 Why the Evaluation Is Hard
+
+DYTM's primary value proposition — "a human reads a contract and catches a misunderstanding before code is written" — requires a human in the loop. Every attempt to simulate this with an LLM (auto-approve, Planner-as-Executive) introduces the same correlated-error problem the system is designed to solve.
+
+The A2A experiment partially escapes this by using a cross-family Planner (Claude) to judge an OpenAI Spec/Coder pipeline. But even this introduces "LLMs all the way down" concerns: the Planner's judgment of intent match is itself probabilistic (mitigated by 3× majority voting at temperature=0, but not eliminated).
+
+A user study remains the gold-standard evaluation. Without one, the strongest evidence for DYTM's value is: (1) the PBT retry loop provides measurable error correction (+1.8% on HumanEval), (2) the deterministic taxonomy correctly identifies 67% of regression root causes, suggesting that coding task ambiguity is bounded and enumerable, and (3) the hybrid A2A condition recovers 67% of the NL baseline gap, confirming PBTs and NL are complementary.
+
+---
+
+## 10. Future Directions
 
 ### 10.1 Hybrid Contract Format
 
@@ -371,9 +475,21 @@ N participants use Free Mode to solve coding tasks. Measure whether reviewing th
 
 Re-run the gpt-4o baseline with proper rate limiting (workers=1 or 2 with exponential backoff) to obtain a valid comparison point. If gpt-4o baseline exceeds DYTM gpt-4o-mini, this further supports the evaluation gap argument — DYTM's value isn't in raw benchmark performance but in verifiable intent transfer.
 
+### 10.7 Phase 2: On-Device / Enterprise Product
+
+The original project vision (see `Agent Readme.md`) includes a Phase 2 targeting **on-device execution on iOS** using Apple's `FoundationModels` or `MLX Swift` for private local inference, `Codable` for deterministic JSON→CNL parsing, and `JavaScriptCore` as a sandbox (bypassing iOS W^X memory restrictions). This positions DYTM as a privacy-first, on-device verification layer for edge AI — a high-value enterprise direction, contingent on the academic validation from Phase 1.
+
+### 10.8 Related Research Directions
+
+The experiments surfaced broader interest in **applied LLM trust mechanisms** — formal or semi-formal methods for verifying, constraining, or auditing LLM outputs. Adjacent directions include:
+
+- **Adversarial contract testing**: Use an adversary LLM to write code that sneaks past the PBT contract. Measures contract strength independently of intent fidelity.
+- **Knowledge-grounded verification**: Extend the PBT concept to verify whether LLM outputs are strictly derivable from an approved knowledge graph or RAG database (not just functional code).
+- **Deterministic intent enumeration**: Explore whether the space of possible meanings of an English coding prompt is not only bounded (per the taxonomy in §3.4) but *enumerable* in a deterministic, tree-structured way — a finite list of interpretations, each with an estimated probability. This would make the multi-spec approach (§3.5) fully deterministic.
+
 ---
 
-## 10. Running the Code
+## 11. Running the Code
 
 ### Setup
 ```bash
@@ -453,6 +569,17 @@ python -u -m eval.a2a.run_a2a_dytm \
 python -m eval.a2a.compare_a2a
 ```
 
+### A2A Experiment — Hybrid (DYTM + NL feedback)
+```bash
+python -u -m eval.a2a.run_a2a_hybrid \
+    --tasks eval/a2a/results/task_bank.json \
+    --planner-model claude-sonnet-4-20250514 \
+    --coder-model gpt-4o-mini \
+    --max-retries 4 \
+    --max-spec-retries 3 \
+    --max-nl-rounds 2
+```
+
 ### A2A Experiment — Verbose Single-Task Trace
 ```bash
 python -m eval.a2a.trace_task \
@@ -464,7 +591,7 @@ python -m eval.a2a.trace_task \
 
 ---
 
-## 11. Repository Structure
+## 12. Repository Structure
 
 ```
 DYTM/
@@ -497,6 +624,7 @@ DYTM/
 │   │   ├── generate_tasks.py             # CLI: generate task bank JSON
 │   │   ├── run_a2a_baseline.py           # Condition A: NL-only delegation
 │   │   ├── run_a2a_dytm.py              # Condition B: DYTM protocol delegation
+│   │   ├── run_a2a_hybrid.py            # Condition C: DYTM pipeline + NL feedback
 │   │   ├── compare_a2a.py               # Side-by-side result comparison
 │   │   ├── trace_task.py                # Verbose single-task debugger
 │   │   ├── metrics.py                   # Metric computation
@@ -514,7 +642,7 @@ DYTM/
 
 ---
 
-## 12. Citation & Related Work
+## 13. Citation & Related Work
 
 DYTM differentiates from existing iterative refinement systems as follows:
 
